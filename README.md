@@ -26,6 +26,8 @@ A Retrieval-Augmented Generation (RAG) system built with ChromaDB for querying J
 
 ### Running with Docker Compose
 
+**Note:** The Docker Compose setup requires significant disk space (~16GB) due to ML dependencies. If you encounter disk space issues, use the local setup method below.
+
 1. Clone the repository:
 ```bash
 git clone https://github.com/david-wis/JADE_RAG.git
@@ -40,7 +42,7 @@ cd JADE_RAG
 
 3. Start the services:
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 4. Open your browser and navigate to:
@@ -54,14 +56,22 @@ http://localhost:5000
 
 ### Running Locally (Development)
 
+**Recommended for development and testing - requires less disk space.**
+
 1. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
+Or use the setup script:
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
 2. Start ChromaDB (using Docker):
 ```bash
-docker run -p 8000:8000 -v ./chroma_data:/chroma/chroma chromadb/chroma:latest
+docker run -d -p 8000:8000 -v ./chroma_data:/chroma/chroma chromadb/chroma:latest
 ```
 
 3. Run the Flask application:
