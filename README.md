@@ -26,33 +26,26 @@ A Retrieval-Augmented Generation (RAG) system built with ChromaDB for querying J
 
 ### Running with Docker Compose
 
-**Note:** The Docker Compose setup requires significant disk space (~16GB) due to ML dependencies. If you encounter disk space issues, use the local setup method below.
+**Note:** The Docker Compose setup requires significant disk space (~16GB) due to ML dependencies. If you encounter disk space issues, use the lightweight or local setup method below.
 
-1. Clone the repository:
-```bash
-git clone https://github.com/david-wis/JADE_RAG.git
-cd JADE_RAG
-```
-
-2. Place your Jupyter notebooks in the `notebooks/` directory:
-```bash
-# The repository includes a sample notebook
-# Add your own .ipynb files to the notebooks/ directory
-```
-
-3. Start the services:
+**Full Stack (ChromaDB + Flask in containers):**
 ```bash
 docker compose up --build
 ```
 
-4. Open your browser and navigate to:
-```
-http://localhost:5000
+**Lightweight (ChromaDB only - Recommended):**
+```bash
+# Start only ChromaDB in Docker
+docker compose -f docker-compose.light.yml up
+
+# In another terminal, run Flask locally
+pip install -r requirements.txt
+export CHROMA_HOST=localhost
+export CHROMA_PORT=8000
+python app.py
 ```
 
-5. Click "Process Notebooks" to load your notebooks into the system
-
-6. Start asking questions about your notebooks!
+Then open your browser and navigate to `http://localhost:5000`
 
 ### Running Locally (Development)
 
