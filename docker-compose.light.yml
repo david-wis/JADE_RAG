@@ -1,0 +1,27 @@
+version: '3.8'
+
+# Lightweight Docker Compose - Only runs ChromaDB
+# Run the Flask app locally to save disk space
+
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - rag-network
+
+networks:
+  rag-network:
+    driver: bridge
+
+# After running this file with `docker compose -f docker-compose.light.yml up`
+# Run the Flask app locally with:
+#   export CHROMA_HOST=localhost
+#   export CHROMA_PORT=8000
+#   python app.py
