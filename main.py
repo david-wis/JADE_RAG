@@ -39,6 +39,24 @@ class QueryResponse(BaseModel):
 async def root():
     return {"message": "JADE RAG System is running"}
 
+@app.get("/config")
+async def get_config():
+    """Get current text splitter configuration"""
+    if not rag_system:
+        raise HTTPException(status_code=500, detail="RAG system not initialized")
+    
+    return {
+        "text_splitter_strategy": rag_system.text_splitter.strategy,
+        "chunk_size": rag_system.text_splitter.chunk_size,
+        "chunk_overlap": rag_system.text_splitter.chunk_overlap,
+        "min_chunk_size": rag_system.text_splitter.min_chunk_size,
+        "langchain_enabled": rag_system.text_splitter.strategy != "cell_based",
+        "reranking_enabled": rag_system.enable_reranking,
+        "reranking_model": rag_system.reranking_model_name if rag_system.enable_reranking else None,
+        "initial_retrieval_count": rag_system.initial_retrieval_count,
+        "final_retrieval_count": rag_system.final_retrieval_count
+    }
+
 @app.post("/query", response_model=QueryResponse)
 async def query_rag(request: QueryRequest):
     try:

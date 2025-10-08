@@ -1,10 +1,10 @@
 # Core web framework
-fastapi==0.104.1
+fastapi==0.118.2
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 
 # Vector database
-weaviate-client==3.25.3
+weaviate-client==3.26.7
 
 # AI/ML
 ollama==0.1.7
@@ -12,6 +12,8 @@ openai==1.3.7
 sentence-transformers==2.7.0
 huggingface-hub==0.20.3
 numpy==1.24.3
+langchain==0.1.0
+torch>=1.9.0
 
 # Notebook processing
 nbformat==5.9.2

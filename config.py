@@ -26,3 +26,15 @@ SERVER_PORT = int(os.getenv("SERVER_PORT", "8001"))
 
 # Notebooks Configuration
 NOTEBOOKS_DIR = os.getenv("NOTEBOOKS_DIR", "/app/notebooks")
+
+# Text Splitter Configuration (using LangChain RecursiveCharacterTextSplitter)
+TEXT_SPLITTER_STRATEGY = os.getenv("TEXT_SPLITTER_STRATEGY", "cell_based")  # "cell_based" or "langchain"
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
+MIN_CHUNK_SIZE = int(os.getenv("MIN_CHUNK_SIZE", "100"))
+
+# Reranking Configuration
+ENABLE_RERANKING = os.getenv("ENABLE_RERANKING", "true").lower() == "true"
+RERANKING_MODEL = os.getenv("RERANKING_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+INITIAL_RETRIEVAL_COUNT = int(os.getenv("INITIAL_RETRIEVAL_COUNT", "20"))  # Retrieve more initially, then rerank
+FINAL_RETRIEVAL_COUNT = int(os.getenv("FINAL_RETRIEVAL_COUNT", "5"))  # Final number after reranking

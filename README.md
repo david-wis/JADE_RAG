@@ -40,14 +40,14 @@ A Retrieval-Augmented Generation (RAG) system for JADE course materials using We
 
 ### 1. Configuration
 
-First, configure your AI provider by copying the example environment file:
+First, configure your environment by copying the template file:
 
 ```bash
-# Copy the example .env file
-cp .env.example .env
+# Copy the environment template
+cp env.template .env
 ```
 
-Edit the `.env` file and choose your AI provider:
+Edit the `.env` file and configure your settings:
 
 #### Option A: Using OpenAI (Recommended)
 
@@ -81,6 +81,26 @@ WEAVIATE_URL=http://localhost:8080
 SERVER_HOST=0.0.0.0
 SERVER_PORT=8001
 ```
+
+#### Text Splitter Configuration
+
+The system supports configurable text splitting strategies for processing Jupyter notebooks:
+
+```bash
+# Text Splitter Configuration
+TEXT_SPLITTER_STRATEGY=cell_based  # "cell_based" or "langchain"
+CHUNK_SIZE=1000
+CHUNK_OVERLAP=200
+MIN_CHUNK_SIZE=100
+```
+
+**Strategy Options:**
+- `cell_based`: Preserves each Jupyter cell as a single chunk (recommended for educational content)
+- `langchain`: Uses LangChain's RecursiveCharacterTextSplitter for more granular splitting
+
+**When to use each:**
+- **cell_based**: Best for educational notebooks where each cell represents a complete concept
+- **langchain**: Better for large cells or when you need more precise retrieval granularity
 
 ### 2. Quick Setup
 
