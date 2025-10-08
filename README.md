@@ -1,21 +1,21 @@
 # JADE RAG System
 
-A Retrieval-Augmented Generation (RAG) system for JADE course materials using Weaviate, Ollama, and FastAPI.
+A Retrieval-Augmented Generation (RAG) system for JADE course materials using Weaviate, OpenAI/Ollama, and FastAPI.
 
 ## Features
 
 - 📚 **Notebook Processing**: Automatically extracts content from Jupyter notebooks in the `Clases/` directory
 - 🔍 **Semantic Search**: Uses Weaviate for vector storage and retrieval
-- 🤖 **AI-Powered Q&A**: Integrates with Ollama using the `gpt-oss:20b` model
+- 🤖 **AI-Powered Q&A**: Integrates with OpenAI GPT models or local Ollama models
 - 🌐 **Web UI**: Simple and intuitive interface for asking questions
-- 🐍 **Local Python**: Runs locally without Docker complexity
+- 🐍 **Local Python**: Runs locally with configurable AI providers
 
 ## Architecture
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   FastAPI UI    │    │    Weaviate     │    │  Local Ollama   │
-│   (Port 8001)   │◄──►│   (Port 8080)   │    │   (Port 11434)  │
+│   FastAPI UI    │    │    Weaviate     │    │ OpenAI/Ollama   │
+│   (Port 8001)   │◄──►│   (Port 8080)   │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
          │                       │                       │
          └───────────────────────┼───────────────────────┘
@@ -33,17 +33,65 @@ A Retrieval-Augmented Generation (RAG) system for JADE course materials using We
 
 - Python 3.11+
 - Docker (for Weaviate only)
-- Ollama installed locally
+- Either:
+  - **OpenAI API Key** (recommended for better performance)
+  - **Or Ollama installed locally** (for offline usage)
 - At least 8GB RAM
 
-### 1. Quick Setup
+### 1. Configuration
+
+First, configure your AI provider by copying the example environment file:
+
+```bash
+# Copy the example .env file
+cp .env.example .env
+```
+
+Edit the `.env` file and choose your AI provider:
+
+#### Option A: Using OpenAI (Recommended)
+
+```bash
+# Set AI provider to OpenAI
+AI_PROVIDER=openai
+
+# Add your OpenAI API key
+OPENAI_API_KEY=sk-your-actual-openai-api-key-here
+OPENAI_MODEL=gpt-3.5-turbo  # or gpt-4
+
+# Other settings remain the same
+WEAVIATE_URL=http://localhost:8080
+SERVER_HOST=0.0.0.0
+SERVER_PORT=8001
+```
+
+#### Option B: Using Ollama (Local)
+
+```bash
+# Set AI provider to Ollama
+AI_PROVIDER=ollama
+
+# Configure Ollama settings
+OLLAMA_HOST=localhost
+OLLAMA_PORT=11434
+MODEL_NAME=gpt-oss:20b
+
+# Other settings
+WEAVIATE_URL=http://localhost:8080
+SERVER_HOST=0.0.0.0
+SERVER_PORT=8001
+```
+
+### 2. Quick Setup
 
 ```bash
 # Run the setup script
 ./setup_local.sh
 ```
 
-### 2. Manual Setup (Alternative)
+### 3. Manual Setup (Alternative)
+
+If you prefer manual setup:
 
 ```bash
 # Create virtual environment
@@ -56,12 +104,13 @@ pip install -r requirements.txt
 # Start Weaviate
 docker-compose up -d weaviate
 
-# Start Ollama (if not already running)
+# If using Ollama, start Ollama (if not already running)
+# Skip this step if using OpenAI
 ollama serve
 ollama pull gpt-oss:20b
 ```
 
-### 3. Start the RAG Server
+### 4. Start the RAG Server
 
 ```bash
 # Activate virtual environment
@@ -71,22 +120,22 @@ source venv/bin/activate
 python run_local.py
 ```
 
-### 4. Ingest Course Materials
+### 5. Ingest Course Materials
 
 ```bash
 # Ingest all notebooks from the Clases/ directory
 curl -X POST http://localhost:8001/ingest
 ```
 
-### 5. Access the UI
+### 6. Access the UI
 
-Open your browser and go to: http://localhost:8001/ui
+Open your browser and go to: <http://localhost:8001/ui>
 
 ## Usage
 
 ### Web Interface
 
-1. Navigate to http://localhost:8001/ui
+1. Navigate to <http://localhost:8001/ui>
 2. Ask questions about the course content
 3. View answers with source references
 
@@ -111,14 +160,30 @@ curl http://localhost:8001/health
 
 ## Configuration
 
-Environment variables can be set in the `config.py` file or as environment variables:
+Environment variables can be set in the `.env` file:
 
-- `WEAVIATE_URL`: Weaviate server URL (default: http://localhost:8080)
+### AI Provider Settings
+
+- `AI_PROVIDER`: Choose between "openai" or "ollama" (default: ollama)
+
+### OpenAI Settings (when AI_PROVIDER=openai)
+
+- `OPENAI_API_KEY`: Your OpenAI API key (required for OpenAI)
+- `OPENAI_MODEL`: OpenAI model to use (default: gpt-3.5-turbo)
+- `OPENAI_BASE_URL`: OpenAI API base URL (default: <https://api.openai.com/v1>)
+
+### Ollama Settings (when AI_PROVIDER=ollama)
+
 - `OLLAMA_HOST`: Ollama host (default: localhost)
 - `OLLAMA_PORT`: Ollama port (default: 11434)
 - `MODEL_NAME`: Ollama model name (default: gpt-oss:20b)
+
+### General Settings
+
+- `WEAVIATE_URL`: Weaviate server URL (default: <http://localhost:8080>)
 - `SERVER_HOST`: Server host (default: 0.0.0.0)
 - `SERVER_PORT`: Server port (default: 8001)
+- `NOTEBOOKS_DIR`: Directory containing notebooks (default: /app/notebooks)
 
 ## Development
 
@@ -148,19 +213,29 @@ python run_local.py
 
 ### Common Issues
 
-1. **Ollama model not found**: Make sure Ollama is running locally and the model is pulled
+1. **OpenAI API key issues**: Make sure your API key is valid and has sufficient credits
+   ```bash
+   # Test your API key
+   curl https://api.openai.com/v1/models \
+     -H "Authorization: Bearer $OPENAI_API_KEY"
+   ```
+
+2. **Ollama model not found**: Make sure Ollama is running locally and the model is pulled
+
    ```bash
    ollama serve
    ollama pull gpt-oss:20b
    ```
 
-2. **Weaviate connection issues**: Check if Weaviate is running
+3. **Weaviate connection issues**: Check if Weaviate is running
+
    ```bash
    docker-compose logs weaviate
    curl http://localhost:8080/v1/meta
    ```
 
-3. **GPU not detected**: Ensure NVIDIA Docker runtime is installed
+4. **GPU not detected**: Ensure NVIDIA Docker runtime is installed
+
    ```bash
    docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi
    ```
@@ -177,11 +252,13 @@ docker-compose logs weaviate
 
 ## File Structure
 
-```
+```text
 JADE_RAG/
 ├── Clases/                 # Jupyter notebooks directory
 ├── data/                   # Persistent data storage
 ├── venv/                   # Python virtual environment
+├── .env                   # Environment configuration
+├── .env.example           # Environment template
 ├── docker-compose.yml      # Weaviate Docker configuration
 ├── main.py                # FastAPI application
 ├── rag_system.py          # Core RAG logic with Weaviate

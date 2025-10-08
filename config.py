@@ -4,6 +4,14 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# AI Provider Configuration
+AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama")  # "openai" or "ollama"
+
+# OpenAI Configuration
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+
 # Weaviate Configuration
 WEAVIATE_URL = os.getenv("WEAVIATE_URL", "http://localhost:8080")
 
