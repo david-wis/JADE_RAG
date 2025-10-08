@@ -1,0 +1,21 @@
+# Core web framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Vector database
+weaviate-client==3.25.3
+
+# AI/ML
+ollama==0.1.7
+sentence-transformers==2.7.0
+huggingface-hub==0.20.3
+numpy==1.24.3
+
+# Notebook processing
+nbformat==5.9.2
+
+# Utilities
+jinja2==3.1.2
+pydantic==2.5.0
+python-dotenv==1.0.0
