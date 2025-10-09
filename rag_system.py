@@ -404,7 +404,7 @@ class RAGSystem:
 
             if not results.get("data", {}).get("Get", {}).get("JadeNotebooks"):
                 return {
-                    "answer": "I couldn't find relevant information in the course materials.",
+                    "answer": "No pude encontrar información relevante en los materiales del curso.",
                     "sources": [],
                     "question": question,
                 }
@@ -446,12 +446,12 @@ class RAGSystem:
             context = "\n\n".join([doc["content"] for doc in context_docs])
 
             # Generate prompt
-            prompt = f"""Based on the following course materials, please answer the question: {question}
+            prompt = f"""Basándote en los siguientes materiales del curso, por favor responde la pregunta: {question}
 
-Course Materials:
+Materiales del Curso:
 {context}
 
-Please provide a clear, helpful answer based on the course content. If the information is not sufficient, please say so."""
+Por favor proporciona una respuesta clara y útil basada en el contenido del curso. Si la información no es suficiente, por favor indícalo."""
 
             # Query AI provider
             if self.ai_provider == "openai":
@@ -460,7 +460,7 @@ Please provide a clear, helpful answer based on the course content. If the infor
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a helpful assistant that answers questions based on course materials.",
+                            "content": "Eres un asistente útil que responde preguntas basándose en los materiales del curso.",
                         },
                         {"role": "user", "content": prompt},
                     ],
@@ -480,7 +480,7 @@ Please provide a clear, helpful answer based on the course content. If the infor
         except Exception as e:
             logger.error(f"Error querying RAG system: {e}")
             return {
-                "answer": f"I encountered an error while processing your question: {str(e)}",
+                "answer": f"Encontré un error mientras procesaba tu pregunta: {str(e)}",
                 "sources": [],
                 "question": question,
             }

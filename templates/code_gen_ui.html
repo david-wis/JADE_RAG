@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JADE Code Example Generator</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .nav-links {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .nav-links a {
+            color: #007bff;
+            text-decoration: none;
+            margin: 0 15px;
+            padding: 8px 16px;
+            border-radius: 5px;
+            background: #f8f9fa;
+            transition: all 0.2s ease;
+        }
+        .nav-links a:hover {
+            background: #007bff;
+            color: white;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 120px;
+            resize: vertical;
+        }
+        .input-row {
+            display: flex;
+            gap: 15px;
+            align-items: end;
+        }
+        .input-row .input-group {
+            flex: 1;
+        }
+        .input-row .input-group:last-child {
+            flex: 0 0 120px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            color: #666;
+            margin: 20px 0;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+        }
+        .example {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .example-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+        }
+        .example-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #333;
+        }
+        .example-id {
+            background: #007bff;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .code-block {
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .theory-sources {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 6px;
+        }
+        .source {
+            margin-bottom: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            border-left: 3px solid #28a745;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .source:hover {
+            background: #f8f9fa;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .source-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .source-title {
+            font-weight: 600;
+            color: #333;
+            flex: 1;
+        }
+        .confidence-badge {
+            background: #007bff;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        .confidence-high { background: #28a745; }
+        .confidence-medium { background: #ffc107; color: #333; }
+        .confidence-low { background: #dc3545; }
+        .source-content {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .improvements {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .improvements h4 {
+            margin: 0 0 8px 0;
+            color: #155724;
+        }
+        .improvements ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .theory-alignment {
+            background: #cce5ff;
+            border: 1px solid #99d6ff;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .theory-alignment h4 {
+            margin: 0 0 8px 0;
+            color: #004085;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .original-code {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .original-code h5 {
+            margin: 0 0 8px 0;
+            color: #856404;
+        }
+        .toggle-button {
+            background: #6c757d;
+            color: white;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 3px;
+            font-size: 12px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        .toggle-button:hover {
+            background: #5a6268;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 JADE Code Example Generator</h1>
+        
+        <div class="nav-links">
+            <a href="/ui">📚 Q&A System</a>
+            <a href="/code-gen">💻 Code Generator</a>
+        </div>
+        
+        <div class="input-group">
+            <label for="requirement">Rubric Requirement:</label>
+            <textarea id="requirement" placeholder="e.g., Create a function that takes a list of numbers and returns the sum of all even numbers"></textarea>
+        </div>
+        
+        <div class="input-row">
+            <div class="input-group">
+                <label for="num_examples">Number of Examples:</label>
+                <select id="num_examples">
+                    <option value="2">2 Examples</option>
+                    <option value="3" selected>3 Examples</option>
+                    <option value="4">4 Examples</option>
+                    <option value="5">5 Examples</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <button onclick="generateExamples()">Generate Examples</button>
+            </div>
+        </div>
+        
+        <div class="loading" id="loading">
+            <p>🤖 Generating code examples...</p>
+        </div>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        // Debug: Make sure function is defined
+        console.log('Script loading...');
+        
+        async function generateExamples() {
+            console.log('generateExamples called');
+            const requirement = document.getElementById('requirement').value.trim();
+            const numExamples = parseInt(document.getElementById('num_examples').value);
+            
+            if (!requirement) {
+                alert('Please enter a rubric requirement');
+                return;
+            }
+            
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+            
+            loading.style.display = 'block';
+            result.innerHTML = '';
+            
+            try {
+                const response = await fetch('/generate-code', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        requirement: requirement,
+                        num_examples: numExamples
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                displayResult(data);
+            } catch (error) {
+                result.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+        
+        function displayResult(data) {
+            const result = document.getElementById('result');
+            
+            if (data.error) {
+                result.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                return;
+            }
+            
+            let examplesHtml = '';
+            if (data.examples && data.examples.length > 0) {
+                examplesHtml = '<div class="result"><h3>💡 Generated Examples:</h3>';
+                
+                data.examples.forEach((example, index) => {
+                    const hasImprovements = example.improvements && example.improvements.length > 0;
+                    const hasTheoryAlignment = example.theory_alignment;
+                    const hasOriginalCode = example.original_code;
+                    
+                    const exampleTitle = example.description || 'Example ' + (index + 1);
+                    const exampleId = example.example_id || (index + 1);
+                    const originalCodeHtml = hasOriginalCode ? 
+                        '<div class="original-code"><h5>Original Code:</h5><div class="code-block">' + escapeHtml(formatCode(example.original_code)) + '</div></div>' : '';
+                    const improvementsHtml = hasImprovements ? 
+                        '<div class="improvements"><h4>🔧 Improvements Made:</h4><ul>' + 
+                        example.improvements.map(improvement => '<li>' + improvement + '</li>').join('') + 
+                        '</ul></div>' : '';
+                    const theoryHtml = hasTheoryAlignment ? 
+                        '<div class="theory-alignment"><h4>📚 Theory Alignment:</h4><p>' + example.theory_alignment + '</p></div>' : '';
+                    
+                    examplesHtml += 
+                        '<div class="example">' +
+                            '<div class="example-header">' +
+                                '<div class="example-title">' + exampleTitle + '</div>' +
+                                '<div class="example-id">Example ' + exampleId + '</div>' +
+                            '</div>' +
+                            originalCodeHtml +
+                            '<div class="code-block">' + escapeHtml(formatCode(example.code)) + '</div>' +
+                            '<p><strong>Approach:</strong> ' + (example.approach || 'No approach description provided') + '</p>' +
+                            improvementsHtml +
+                            theoryHtml +
+                        '</div>';
+                });
+                
+                examplesHtml += '</div>';
+            }
+            
+            let theoryHtml = '';
+            if (data.theory_sources && data.theory_sources.length > 0) {
+                theoryHtml = '<div class="theory-sources"><h4>📚 Theory Sources Used:</h4>';
+                data.theory_sources.forEach((source, index) => {
+                    const confidence = source.confidence || 0;
+                    let confidenceClass = 'confidence-low';
+                    if (confidence >= 70) {
+                        confidenceClass = 'confidence-high';
+                    } else if (confidence >= 50) {
+                        confidenceClass = 'confidence-medium';
+                    }
+                    
+                    theoryHtml += `
+                        <div class="source">
+                            <div class="source-header">
+                                <div class="source-title">${source.metadata.filename || 'Unknown'}</div>
+                                <span class="confidence-badge ${confidenceClass}">${confidence}%</span>
+                            </div>
+                            <div class="source-content">${source.content.substring(0, 200)}...</div>
+                        </div>
+                    `;
+                });
+                theoryHtml += '</div>';
+            }
+            
+            result.innerHTML = `
+                <div class="result">
+                    <h3>📋 Requirement:</h3>
+                    <p>${data.requirement}</p>
+                    <p><strong>Generated ${data.num_examples} examples</strong> ${data.has_theory_improvement ? 'with theory-based improvements' : 'without theory improvements'}</p>
+                </div>
+                ${examplesHtml}
+                ${theoryHtml}
+            `;
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function formatCode(code) {
+            // Clean up the code and ensure proper formatting
+            if (!code) return '';
+            
+            // Remove any leading/trailing whitespace
+            code = code.trim();
+            
+            // If the code contains escaped newlines, convert them
+            code = code.replace(/\\n/g, '\n');
+            
+            // Ensure proper indentation (convert tabs to spaces if needed)
+            const lines = code.split('\n');
+            const formattedLines = lines.map(line => {
+                // Convert tabs to 4 spaces
+                return line.replace(/\t/g, '    ');
+            });
+            
+            return formattedLines.join('\n');
+        }
+        
+        // Allow Enter key to submit
+        document.getElementById('requirement').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                generateExamples();
+            }
+        });
+        
+        // Debug: Verify function is defined
+        console.log('generateExamples function defined:', typeof generateExamples);
+        
+        // Make function globally available
+        window.generateExamples = generateExamples;
+    </script>
+</body>
+</html>
