@@ -86,7 +86,7 @@ class CodeExampleGenerator:
     async def generate_initial_examples(self, requirement: str, num_examples: int = 3) -> List[Dict[str, Any]]:
         """Generate initial code examples based on the requirement"""
         try:
-            prompt = f"""Eres un instructor de programación en Python. Dado el siguiente requerimiento, genera {num_examples} ejemplos de código diferentes que cumplan con este requerimiento.
+            prompt = f"""Eres un alumno de una materia de programación en Python. Dado el siguiente requerimiento, genera {num_examples} ejemplos de código diferentes que cumplan con este requerimiento.
 
 Requerimiento: {requirement}
 
@@ -97,6 +97,9 @@ Para cada ejemplo, proporciona:
 IMPORTANTE: 
 - Usa la indentación correcta de Python (4 espacios)
 - Asegúrate de que el código esté bien formateado y sea legible
+- El código debe ser correcto, pero no es necesario que sea eficiente
+- Debes asumir tus conocimientos son básicos (por ejemplo, no uses clases ni lambdas).
+- El código debe ser lo más imperativo posible (evita usar funciones de Python que simplifiquen el código)
 
 Formatea tu respuesta usando formato XML con la siguiente estructura:
 <example>
@@ -312,9 +315,11 @@ Por favor arma un nuevo ejemplo:
 4. Respetando el requerimiento original ya que el material solo define el estilo y no la consigna
 
 IMPORTANTE:
-- Escribe todo el código y explicaciones en ESPAÑOL únicamente
 - Usa la indentación correcta de Python (4 espacios)
 - Asegúrate de que el código esté bien formateado y sea legible
+- El código debe ser correcto, pero no es necesario que sea eficiente
+- Debes asumir tus conocimientos son básicos (por ejemplo, no uses clases ni lambdas).
+- El código debe ser lo más imperativo posible (evita usar funciones de Python que simplifiquen el código)
 
 Proporciona tu respuesta usando formato XML:
 <example>
