@@ -293,7 +293,7 @@ Asegúrate de que los ejemplos sean diversos y demuestren diferentes formas de r
             improved_examples = []
             
             for example in examples:
-                prompt = f"""Eres un instructor de programación en Python. Tengo un ejemplo de código que cumple con un requerimiento, y quiero que lo mejores basándote en las mejores prácticas teóricas de los materiales del curso.
+                prompt = f"""Eres un instructor de programación en Python. Tengo un ejemplo de código que cumple con un requerimiento, y quiero que lo adaptes basándote en los materiales del curso.
 
 Requerimiento Original: {requirement}
 
@@ -305,11 +305,11 @@ Descripción: {example['description']}
 Código: {example['code']}
 Enfoque: {example['approach']}
 
-Por favor mejora este ejemplo:
+Por favor arma un nuevo ejemplo:
 1. Siguiendo las mejores prácticas mencionadas en la teoría del curso
-2. Usando las funciones, métodos o enfoques recomendados de la teoría
+2. Usando las funciones, métodos o enfoques recomendados de la teoría (prioriza hacerlo con funciones, metodos o enfoques del material provisto por más que cambie el código original)
 3. Haciendo que el código esté más alineado con las enseñanzas del curso
-4. Manteniendo la misma funcionalidad central pero mejorando la implementación
+4. Respetando el requerimiento original ya que el material solo define el estilo y no la consigna
 
 IMPORTANTE:
 - Escribe todo el código y explicaciones en ESPAÑOL únicamente
