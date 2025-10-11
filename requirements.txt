@@ -12,8 +12,12 @@ openai==1.3.7
 sentence-transformers==2.7.0
 huggingface-hub==0.20.3
 numpy==1.24.3
-langchain==0.1.0
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-ollama>=0.3.0
+langchain-openai>=0.3.0
 torch>=1.9.0
+langsmith>=0.4.0
 
 # Notebook processing
 nbformat==5.9.2

@@ -5,6 +5,9 @@ import re
 from typing import List, Dict, Any, Optional
 import logging
 from rag_system import RAGSystem
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_ollama.llms import OllamaLLM
+from langchain_openai import ChatOpenAI
 from config import (
     AI_PROVIDER,
     OPENAI_API_KEY,
@@ -13,17 +16,18 @@ from config import (
     OLLAMA_HOST,
     OLLAMA_PORT,
     MODEL_NAME,
+    LANGSMITH_API_KEY,
+    LANGSMITH_PROJECT,
+    LANGSMITH_ENDPOINT,
+    ENABLE_LANGSMITH_TRACING,
 )
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Import OpenAI if using OpenAI provider
-if AI_PROVIDER == "openai":
-    from openai import AsyncOpenAI
-else:
-    import ollama
+# Import LangSmith for tracing
+from langsmith import traceable
 
 
 class CodeExampleGenerator:
@@ -43,9 +47,11 @@ class CodeExampleGenerator:
         self.ollama_port = OLLAMA_PORT
         self.model_name = MODEL_NAME
         
-        # Initialize AI client
-        self.openai_client = None
-        self.ollama_client = None
+        # Initialize LLM
+        self.llm = None
+        
+        # LangSmith configuration
+        self.enable_langsmith_tracing = ENABLE_LANGSMITH_TRACING
         
     async def initialize(self):
         """Initialize the AI client based on provider"""
@@ -54,17 +60,21 @@ class CodeExampleGenerator:
                 if not self.openai_api_key:
                     raise Exception("OpenAI API key is required when using OpenAI provider")
                 
-                self.openai_client = AsyncOpenAI(
-                    api_key=self.openai_api_key, 
-                    base_url=self.openai_base_url
+                self.llm = ChatOpenAI(
+                    model=self.openai_model,
+                    api_key=self.openai_api_key,
+                    base_url=self.openai_base_url,
+                    temperature=0.8
                 )
-                logger.info(f"Initialized OpenAI client with model: {self.openai_model}")
+                logger.info(f"Initialized OpenAI LLM with model: {self.openai_model}")
             else:
-                # Initialize Ollama client
-                self.ollama_client = ollama.AsyncClient(
-                    host=f"http://{self.ollama_host}:{self.ollama_port}"
+                # Initialize Ollama LLM
+                self.llm = OllamaLLM(
+                    model=self.model_name,
+                    temperature=0.8,
+                    base_url=f"http://{self.ollama_host}:{self.ollama_port}"
                 )
-                logger.info(f"Initialized Ollama client with model: {self.model_name}")
+                logger.info(f"Initialized Ollama LLM with model: {self.model_name}")
                 
             logger.info("Code example generator initialized successfully")
             
@@ -72,6 +82,7 @@ class CodeExampleGenerator:
             logger.error(f"Failed to initialize code generator: {e}")
             raise
     
+    @traceable(name="generate_initial_examples")
     async def generate_initial_examples(self, requirement: str, num_examples: int = 3) -> List[Dict[str, Any]]:
         """Generate initial code examples based on the requirement"""
         try:
@@ -100,37 +111,19 @@ Formatea tu respuesta usando formato XML con la siguiente estructura:
 
 Asegúrate de que los ejemplos sean diversos y demuestren diferentes formas de resolver el problema. Enfócate en código claro y legible que siga las mejores prácticas de Python."""
 
-            if self.ai_provider == "openai" and self.openai_client:
-                response = await self.openai_client.chat.completions.create(
-                    model=self.openai_model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "Eres un instructor de programación en Python muy útil. Siempre responde usando formato XML."
-                        },
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.8,
-                    max_tokens=2000,
-                )
-                response_text = (response.choices[0].message.content or "").strip()
-            elif self.ollama_client:
-                # Query Ollama
-                response = await self.ollama_client.generate(
-                    model=self.model_name, 
-                    prompt=prompt, 
-                    stream=False
-                )
-                # Handle Ollama response properly
-                try:
-                    if isinstance(response, dict):
-                        response_text = (response.get("response") or "").strip()
-                    else:
-                        response_text = str(response).strip()
-                except Exception:
-                    response_text = str(response).strip()
+            # Query LLM using LangChain
+            messages = [
+                SystemMessage(content="Eres un instructor de programación en Python muy útil. Siempre responde usando formato XML."),
+                HumanMessage(content=prompt)
+            ]
+            
+            response = self.llm.invoke(messages)
+            
+            # Handle different response types (OpenAI has .content, Ollama returns string directly)
+            if hasattr(response, 'content'):
+                response_text = response.content.strip()
             else:
-                raise Exception("No AI client available")
+                response_text = str(response).strip()
             
             # Parse XML response
             try:
@@ -265,6 +258,7 @@ Asegúrate de que los ejemplos sean diversos y demuestren diferentes formas de r
             logger.error(f"Error getting relevant theory: {e}")
             return []
     
+    @traceable(name="improve_examples_with_theory")
     async def improve_examples_with_theory(self, examples: List[Dict[str, Any]], 
                                          requirement: str, 
                                          theory_sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -314,37 +308,19 @@ Proporciona tu respuesta usando formato XML:
 <theory_alignment>cómo se alinea con la teoría del curso</theory_alignment>
 </example>"""
 
-                if self.ai_provider == "openai" and self.openai_client:
-                    response = await self.openai_client.chat.completions.create(
-                        model=self.openai_model,
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": "Eres un instructor de programación en Python muy útil. Siempre responde usando formato XML y escribe todo en ESPAÑOL únicamente."
-                            },
-                            {"role": "user", "content": prompt},
-                        ],
-                        temperature=0.7,
-                        max_tokens=1500,
-                    )
-                    response_text = (response.choices[0].message.content or "").strip()
-                elif self.ollama_client:
-                    # Query Ollama
-                    response = await self.ollama_client.generate(
-                        model=self.model_name, 
-                        prompt=prompt, 
-                        stream=False
-                    )
-                    # Handle Ollama response properly
-                    try:
-                        if isinstance(response, dict):
-                            response_text = (response.get("response") or "").strip()
-                        else:
-                            response_text = str(response).strip()
-                    except Exception:
-                        response_text = str(response).strip()
+                # Query LLM using LangChain
+                messages = [
+                    SystemMessage(content="Eres un instructor de programación en Python muy útil. Siempre responde usando formato XML y escribe todo en ESPAÑOL únicamente."),
+                    HumanMessage(content=prompt)
+                ]
+                
+                response = self.llm.invoke(messages)
+                
+                # Handle different response types (OpenAI has .content, Ollama returns string directly)
+                if hasattr(response, 'content'):
+                    response_text = response.content.strip()
                 else:
-                    raise Exception("No AI client available")
+                    response_text = str(response).strip()
                 
                 try:
                     # Parse XML response for improved example
@@ -374,6 +350,7 @@ Proporciona tu respuesta usando formato XML:
             logger.error(f"Error improving examples with theory: {e}")
             return examples
     
+    @traceable(name="generate_examples")
     async def generate_examples(self, requirement: str, num_examples: int = 3) -> Dict[str, Any]:
         """Main method to generate and improve code examples"""
         try:

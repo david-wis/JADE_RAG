@@ -1,0 +1,4 @@
+langsmith:
+  enable: true
+  tracing: "true"
+  endpoint: https://api.smith.langchain.com

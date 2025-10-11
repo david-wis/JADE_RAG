@@ -3,10 +3,12 @@ import asyncio
 import json
 from typing import List, Dict, Any, Optional
 import weaviate
-import ollama
 import nbformat
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_ollama.llms import OllamaLLM
+from langchain_openai import ChatOpenAI
 import logging
 from config import (
     WEAVIATE_URL,
@@ -26,15 +28,20 @@ from config import (
     RERANKING_MODEL,
     INITIAL_RETRIEVAL_COUNT,
     FINAL_RETRIEVAL_COUNT,
+    LANGSMITH_API_KEY,
+    LANGSMITH_PROJECT,
+    LANGSMITH_ENDPOINT,
+    LANGSMITH_TRACING,
+    ENABLE_LANGSMITH_TRACING,
 )
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Import OpenAI if using OpenAI provider
-if AI_PROVIDER == "openai":
-    from openai import AsyncOpenAI
+# Import LangSmith for tracing
+from langsmith import Client
+from langsmith import traceable
 
 
 class TextSplitter:
@@ -120,8 +127,11 @@ class RAGSystem:
         self.client = None
         self.embedding_model = None
         self.reranker = None
-        self.ollama_client = None
-        self.openai_client = None
+        self.llm = None
+        
+        # LangSmith configuration
+        self.enable_langsmith_tracing = ENABLE_LANGSMITH_TRACING
+        self.langsmith_client = None
 
     async def initialize(self):
         """Initialize the RAG system components"""
@@ -148,25 +158,34 @@ class RAGSystem:
             else:
                 logger.info("Reranking disabled")
 
-            # Initialize AI client based on provider
+            # Initialize LLM based on provider
             if self.ai_provider == "openai":
                 if not self.openai_api_key:
                     raise Exception(
                         "OpenAI API key is required when using OpenAI provider"
                     )
 
-                self.openai_client = AsyncOpenAI(
-                    api_key=self.openai_api_key, base_url=self.openai_base_url
+                self.llm = ChatOpenAI(
+                    model=self.openai_model,
+                    api_key=self.openai_api_key,
+                    base_url=self.openai_base_url,
+                    temperature=0.7
                 )
-                logger.info(
-                    f"Initialized OpenAI client with model: {self.openai_model}"
-                )
+                logger.info(f"Initialized OpenAI LLM with model: {self.openai_model}")
             else:
-                # Initialize Ollama client
-                self.ollama_client = ollama.AsyncClient(
-                    host=f"http://{self.ollama_host}:{self.ollama_port}"
+                # Initialize Ollama LLM
+                self.llm = OllamaLLM(
+                    model=self.model_name,
+                    temperature=0.7,
+                    base_url=f"http://{self.ollama_host}:{self.ollama_port}"
                 )
-                logger.info(f"Initialized Ollama client with model: {self.model_name}")
+                logger.info(f"Initialized Ollama LLM with model: {self.model_name}")
+
+            # LangSmith is configured via environment variables in langsmith_config.py
+            if os.environ.get("LANGSMITH_TRACING") == "true":
+                logger.info(f"LangSmith tracing enabled for project: {os.environ.get('LANGSMITH_PROJECT', 'default')}")
+            else:
+                logger.info("LangSmith tracing disabled")
 
             logger.info(
                 f"RAG system initialized successfully with {self.ai_provider} provider"
@@ -295,6 +314,7 @@ class RAGSystem:
             logger.error(f"Error during reranking: {e}")
             return documents
 
+    @traceable(name="ingest_notebooks")
     async def ingest_notebooks(self) -> Dict[str, Any]:
         """Ingest all notebooks from the Clases directory"""
         try:
@@ -365,6 +385,7 @@ class RAGSystem:
             logger.error(f"Error ingesting notebooks: {e}")
             raise
 
+    @traceable(name="rag_query")
     async def query(self, question: str, max_results: int = None) -> Dict[str, Any]:
         """Query the RAG system with optional reranking"""
         try:
@@ -453,27 +474,19 @@ Materiales del Curso:
 
 Por favor proporciona una respuesta clara y útil basada en el contenido del curso. Si la información no es suficiente, por favor indícalo."""
 
-            # Query AI provider
-            if self.ai_provider == "openai":
-                response = await self.openai_client.chat.completions.create(
-                    model=self.openai_model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "Eres un asistente útil que responde preguntas basándose en los materiales del curso.",
-                        },
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.7,
-                    max_tokens=1000,
-                )
-                answer = response.choices[0].message.content.strip()
+            # Query LLM using LangChain
+            messages = [
+                SystemMessage(content="Eres un asistente útil que responde preguntas basándose en los materiales del curso."),
+                HumanMessage(content=prompt)
+            ]
+            
+            response = self.llm.invoke(messages)
+            
+            # Handle different response types (OpenAI has .content, Ollama returns string directly)
+            if hasattr(response, 'content'):
+                answer = response.content.strip()
             else:
-                # Query Ollama
-                response = await self.ollama_client.generate(
-                    model=self.model_name, prompt=prompt, stream=False
-                )
-                answer = response["response"].strip()
+                answer = str(response).strip()
 
             return {"answer": answer, "sources": context_docs, "question": question}
 

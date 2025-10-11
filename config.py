@@ -38,3 +38,10 @@ ENABLE_RERANKING = os.getenv("ENABLE_RERANKING", "true").lower() == "true"
 RERANKING_MODEL = os.getenv("RERANKING_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 INITIAL_RETRIEVAL_COUNT = int(os.getenv("INITIAL_RETRIEVAL_COUNT", "20"))  # Retrieve more initially, then rerank
 FINAL_RETRIEVAL_COUNT = int(os.getenv("FINAL_RETRIEVAL_COUNT", "5"))  # Final number after reranking
+
+# LangSmith Configuration
+LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY")
+LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "jade-rag")
+LANGSMITH_ENDPOINT = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+LANGSMITH_TRACING = os.getenv("LANGSMITH_TRACING", "true").lower() == "true"
+ENABLE_LANGSMITH_TRACING = os.getenv("ENABLE_LANGSMITH_TRACING", "true").lower() == "true"

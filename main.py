@@ -11,6 +11,10 @@ import asyncio
 from rag_system import RAGSystem
 from code_generator import CodeExampleGenerator
 from config import SERVER_HOST, SERVER_PORT
+from langsmith_config import load_langsmith_config
+
+# Load LangSmith configuration
+load_langsmith_config()
 
 # Initialize RAG system and code generator
 rag_system = None
