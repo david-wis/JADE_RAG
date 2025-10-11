@@ -243,16 +243,27 @@ Asegúrate de que los ejemplos sean diversos y demuestren diferentes formas de r
                 "approach": "Basic implementation"
             }]
     
-    async def get_relevant_theory(self, requirement: str, max_results: int = 5) -> List[Dict[str, Any]]:
+    async def get_relevant_theory(self, requirement: str, examples: List[Dict[str, Any]] = None, max_results: int = 5) -> List[Dict[str, Any]]:
         """Get relevant theoretical content from notebooks using RAG"""
         try:
-            # Query the RAG system for relevant theory
-            rag_result = await self.rag_system.query(requirement, max_results=max_results)
+            # Create a comprehensive query that includes both requirement and examples
+            query_parts = [requirement]
             
-            if rag_result and "sources" in rag_result:
-                return rag_result["sources"]
-            else:
-                return []
+            if examples:
+                # Add code snippets from examples to the query
+                for example in examples:
+                    if "code" in example and example["code"]:
+                        # Extract key concepts from code (remove comments and common keywords)
+                        code_snippet = example["code"][:500]  # Limit length
+                        query_parts.append(f"código ejemplo: {code_snippet}")
+            
+            # Combine all query parts
+            combined_query = " ".join(query_parts)
+            
+            # Retrieve relevant documents from vector database (no LLM processing)
+            theory_sources = await self.rag_system.retrieve_documents(combined_query, max_results=max_results)
+            
+            return theory_sources
                 
         except Exception as e:
             logger.error(f"Error getting relevant theory: {e}")
@@ -268,11 +279,16 @@ Asegúrate de que los ejemplos sean diversos y demuestren diferentes formas de r
                 logger.warning("No theory sources available for improvement")
                 return examples
             
-            # Create context from theory sources
-            theory_context = "\n\n".join([
-                f"Source: {source['metadata']['filename']}\n{source['content']}"
-                for source in theory_sources
-            ])
+            # Create context from theory sources with numbered separators
+            theory_context_parts = []
+            for i, source in enumerate(theory_sources, 1):
+                source_content = f"MATERIAL {i}:\n"
+                source_content += f"Archivo: {source['metadata']['filename']}\n"
+                source_content += f"Contenido: {source['content']}\n"
+                source_content += "-" * 50
+                theory_context_parts.append(source_content)
+            
+            theory_context = "\n\n".join(theory_context_parts)
             
             improved_examples = []
             
@@ -367,8 +383,8 @@ Proporciona tu respuesta usando formato XML:
                     "error": "Failed to generate initial examples"
                 }
             
-            # Step 2: Get relevant theory from notebooks
-            theory_sources = await self.get_relevant_theory(requirement, max_results=5)
+            # Step 2: Get relevant theory from notebooks using both requirement and examples
+            theory_sources = await self.get_relevant_theory(requirement, initial_examples, max_results=5)
             
             # Step 3: Improve examples with theory
             if theory_sources:

@@ -385,6 +385,86 @@ class RAGSystem:
             logger.error(f"Error ingesting notebooks: {e}")
             raise
 
+    @traceable(name="retrieve_documents")
+    async def retrieve_documents(self, query: str, max_results: int = None) -> List[Dict[str, Any]]:
+        """Retrieve relevant documents from vector database without LLM processing"""
+        try:
+            if not self.client:
+                raise Exception("Weaviate client not initialized")
+
+            # Determine retrieval count based on reranking settings
+            if max_results is None:
+                if self.enable_reranking:
+                    retrieval_count = self.initial_retrieval_count
+                    final_count = self.final_retrieval_count
+                else:
+                    retrieval_count = 5  # Default
+                    final_count = 5
+            else:
+                if self.enable_reranking:
+                    retrieval_count = max(max_results * 3, self.initial_retrieval_count)  # Retrieve more for reranking
+                    final_count = max_results
+                else:
+                    retrieval_count = max_results
+                    final_count = max_results
+
+            # Generate embedding for the query
+            query_embedding = self.embedding_model.encode([query]).tolist()[0]
+
+            # Search for relevant documents in Weaviate
+            results = (
+                self.client.query.get(
+                    "JadeNotebooks",
+                    ["content", "filename", "cell_type", "cell_index", "notebook_path"],
+                )
+                .with_near_vector({"vector": query_embedding})
+                .with_limit(retrieval_count)
+                .with_additional(["certainty", "distance"])
+                .do()
+            )
+
+            if not results.get("data", {}).get("Get", {}).get("JadeNotebooks"):
+                return []
+
+            # Prepare context from retrieved documents
+            context_docs = []
+            for item in results["data"]["Get"]["JadeNotebooks"]:
+                # Calculate confidence score from certainty (0-1 scale)
+                certainty = item.get("_additional", {}).get("certainty", 0)
+                distance = item.get("_additional", {}).get("distance", 1)
+
+                # Convert certainty to percentage and round to 1 decimal place
+                confidence = round(certainty * 100, 1) if certainty else 0
+
+                context_docs.append(
+                    {
+                        "content": item["content"],
+                        "confidence": confidence,
+                        "certainty": certainty,
+                        "distance": distance,
+                        "metadata": {
+                            "filename": item["filename"],
+                            "cell_type": item["cell_type"],
+                            "cell_index": item["cell_index"],
+                            "notebook_path": item["notebook_path"],
+                        },
+                    }
+                )
+
+            # Apply reranking if enabled
+            if self.enable_reranking and len(context_docs) > final_count:
+                logger.info(f"Reranking {len(context_docs)} documents to get top {final_count}")
+                context_docs = self.rerank_documents(query, context_docs)
+                context_docs = context_docs[:final_count]  # Take top N after reranking
+            elif len(context_docs) > final_count:
+                context_docs = context_docs[:final_count]  # Take top N without reranking
+
+            return context_docs
+
+        except Exception as e:
+            logger.error(f"Error retrieving documents: {e}")
+            return []
+
     @traceable(name="rag_query")
     async def query(self, question: str, max_results: int = None) -> Dict[str, Any]:
         """Query the RAG system with optional reranking"""
