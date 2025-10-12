@@ -8,6 +8,10 @@ from rag_system import RAGSystem
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama.llms import OllamaLLM
 from langchain_openai import ChatOpenAI
+
+# Ragas imports
+from ragas import SingleTurnSample
+from ragas.metrics import LLMContextPrecisionWithReference
 from config import (
     AI_PROVIDER,
     OPENAI_API_KEY,
@@ -53,6 +57,9 @@ class CodeExampleGenerator:
         # LangSmith configuration
         self.enable_langsmith_tracing = ENABLE_LANGSMITH_TRACING
         
+        # Ragas configuration
+        self.context_precision_metric = None
+        
     async def initialize(self):
         """Initialize the AI client based on provider"""
         try:
@@ -75,6 +82,11 @@ class CodeExampleGenerator:
                     base_url=f"http://{self.ollama_host}:{self.ollama_port}"
                 )
                 logger.info(f"Initialized Ollama LLM with model: {self.model_name}")
+            
+            # Initialize Ragas context precision metric
+            if self.llm:
+                self.context_precision_metric = LLMContextPrecisionWithReference(llm=self.llm)
+                logger.info("Ragas context precision metric initialized successfully")
                 
             logger.info("Code example generator initialized successfully")
             
@@ -371,8 +383,51 @@ Proporciona tu respuesta usando formato XML:
             logger.error(f"Error improving examples with theory: {e}")
             return examples
     
+    async def calculate_context_precision(self, requirement: str, ground_truth: str, 
+                                        examples: List[Dict[str, Any]], 
+                                        theory_sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Calculate context precision scores for each example using Ragas"""
+        if not self.context_precision_metric or not ground_truth:
+            logger.info("Context precision calculation skipped - no metric or ground truth provided")
+            return examples
+        
+        # Prepare retrieved contexts from theory sources
+        retrieved_contexts = []
+        for source in theory_sources:
+            retrieved_contexts.append(source['content'])
+        
+        if not retrieved_contexts:
+            logger.warning("No retrieved contexts available for context precision calculation")
+            return examples
+        
+        enhanced_examples = []
+        
+        for example in examples:
+            # Create a sample for Ragas evaluation
+            sample = SingleTurnSample(
+                user_input=requirement,
+                reference=ground_truth,
+                retrieved_contexts=retrieved_contexts,
+                rubrics={
+                    "score0_description": "The context is completely irrelevant to the requirement",
+                    "score1_description": "The context is fully relevant to the requirement because it provides best practices or tips that can be applied to the requirement",
+                }
+            )
+            
+            # Calculate context precision score
+            score = await self.context_precision_metric.single_turn_ascore(sample)
+            
+            # Add the score to the example
+            enhanced_example = example.copy()
+            enhanced_example["context_precision_score"] = float(score)
+            enhanced_examples.append(enhanced_example)
+            
+            logger.info(f"Context precision score for example {example.get('example_id', 'unknown')}: {score:.3f}")
+        
+        return enhanced_examples
+    
     @traceable(name="generate_examples")
-    async def generate_examples(self, requirement: str, num_examples: int = 3) -> Dict[str, Any]:
+    async def generate_examples(self, requirement: str, num_examples: int = 3, ground_truth: Optional[str] = None) -> Dict[str, Any]:
         """Main method to generate and improve code examples"""
         try:
             logger.info(f"Generating {num_examples} examples for requirement: {requirement}")
@@ -403,12 +458,19 @@ Proporciona tu respuesta usando formato XML:
                     example["improvements"] = ["No theory sources available for improvement"]
                     example["theory_alignment"] = "No course theory found for this requirement"
             
+            # Step 4: Calculate context precision scores if ground truth is provided
+            if ground_truth and theory_sources:
+                improved_examples = await self.calculate_context_precision(
+                    requirement, ground_truth, improved_examples, theory_sources
+                )
+            
             return {
                 "requirement": requirement,
                 "examples": improved_examples,
                 "theory_sources": theory_sources,
                 "num_examples": len(improved_examples),
-                "has_theory_improvement": len(theory_sources) > 0
+                "has_theory_improvement": len(theory_sources) > 0,
+                "has_context_precision": ground_truth is not None and len(theory_sources) > 0
             }
             
         except Exception as e:

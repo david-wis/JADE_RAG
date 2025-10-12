@@ -48,6 +48,7 @@ class QueryResponse(BaseModel):
 class CodeGenerationRequest(BaseModel):
     requirement: str
     num_examples: Optional[int] = 3
+    ground_truth: Optional[str] = None
 
 class CodeGenerationResponse(BaseModel):
     requirement: str
@@ -55,6 +56,7 @@ class CodeGenerationResponse(BaseModel):
     theory_sources: List[dict]
     num_examples: int
     has_theory_improvement: bool
+    has_context_precision: bool
     error: Optional[str] = None
 
 @app.get("/")
@@ -114,7 +116,8 @@ async def generate_code_examples(request: CodeGenerationRequest):
         
         result = await code_generator.generate_examples(
             request.requirement, 
-            request.num_examples or 3
+            request.num_examples or 3,
+            request.ground_truth
         )
         
         return CodeGenerationResponse(
@@ -123,6 +126,7 @@ async def generate_code_examples(request: CodeGenerationRequest):
             theory_sources=result["theory_sources"],
             num_examples=result["num_examples"],
             has_theory_improvement=result["has_theory_improvement"],
+            has_context_precision=result.get("has_context_precision", False),
             error=result.get("error")
         )
     except Exception as e:

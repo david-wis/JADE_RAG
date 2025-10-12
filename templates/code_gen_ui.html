@@ -251,6 +251,42 @@
         .toggle-button:hover {
             background: #5a6268;
         }
+        .context-precision-score {
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .context-precision-score h5 {
+            margin: 0;
+            color: #1976d2;
+            font-size: 14px;
+        }
+        .score-value {
+            background: #2196f3;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .score-excellent { background: #4caf50; }
+        .score-good { background: #8bc34a; }
+        .score-fair { background: #ff9800; }
+        .score-poor { background: #f44336; }
+        .ragas-info {
+            background: #f3e5f5;
+            border: 1px solid #9c27b0;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 14px;
+            color: #4a148c;
+        }
     </style>
 </head>
 <body>
@@ -265,6 +301,14 @@
         <div class="input-group">
             <label for="requirement">Rubric Requirement:</label>
             <textarea id="requirement" placeholder="e.g., Create a function that takes a list of numbers and returns the sum of all even numbers"></textarea>
+        </div>
+        
+        <div class="input-group">
+            <label for="ground_truth">Ground Truth (Optional):</label>
+            <textarea id="ground_truth" placeholder="e.g., A correct implementation that serves as reference for context precision evaluation"></textarea>
+            <small style="color: #666; font-size: 14px; margin-top: 5px; display: block;">
+                Provide a reference answer to evaluate context precision using Ragas. This will show how well the retrieved contexts align with your expected answer.
+            </small>
         </div>
         
         <div class="input-row">
@@ -296,6 +340,7 @@
         async function generateExamples() {
             console.log('generateExamples called');
             const requirement = document.getElementById('requirement').value.trim();
+            const groundTruth = document.getElementById('ground_truth').value.trim();
             const numExamples = parseInt(document.getElementById('num_examples').value);
             
             if (!requirement) {
@@ -310,15 +355,22 @@
             result.innerHTML = '';
             
             try {
+                const requestBody = {
+                    requirement: requirement,
+                    num_examples: numExamples
+                };
+                
+                // Only include ground_truth if it's provided
+                if (groundTruth) {
+                    requestBody.ground_truth = groundTruth;
+                }
+                
                 const response = await fetch('/generate-code', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        requirement: requirement,
-                        num_examples: numExamples
-                    })
+                    body: JSON.stringify(requestBody)
                 });
                 
                 if (!response.ok) {
@@ -350,9 +402,10 @@
                     const hasImprovements = example.improvements && example.improvements.length > 0;
                     const hasTheoryAlignment = example.theory_alignment;
                     const hasOriginalCode = example.original_code;
+                    const hasContextPrecision = example.context_precision_score !== undefined && example.context_precision_score !== null && example.context_precision_score !== '';
                     
                     const exampleTitle = example.description || 'Example ' + (index + 1);
-                    const exampleId = example.example_id || (index + 1);
+                    const exampleId = index + 1; // Always use array index for consistent numbering
                     const originalCodeHtml = hasOriginalCode ? 
                         '<div class="original-code"><h5>Original Code:</h5><div class="code-block">' + escapeHtml(formatCode(example.original_code)) + '</div></div>' : '';
                     const improvementsHtml = hasImprovements ? 
@@ -361,6 +414,22 @@
                         '</ul></div>' : '';
                     const theoryHtml = hasTheoryAlignment ? 
                         '<div class="theory-alignment"><h4>📚 Theory Alignment:</h4><p>' + example.theory_alignment + '</p></div>' : '';
+                    
+                    // Context Precision Score HTML
+                    let contextPrecisionHtml = '';
+                    if (hasContextPrecision) {
+                        const score = example.context_precision_score;
+                        let scoreClass = 'score-poor';
+                        if (score >= 0.8) scoreClass = 'score-excellent';
+                        else if (score >= 0.6) scoreClass = 'score-good';
+                        else if (score >= 0.4) scoreClass = 'score-fair';
+                        
+                        contextPrecisionHtml = 
+                            '<div class="context-precision-score">' +
+                                '<h5>🎯 Context Precision Score (Ragas)</h5>' +
+                                '<span class="score-value ' + scoreClass + '">' + (score * 100).toFixed(1) + '%</span>' +
+                            '</div>';
+                    }
                     
                     examplesHtml += 
                         '<div class="example">' +
@@ -371,6 +440,7 @@
                             originalCodeHtml +
                             '<div class="code-block">' + escapeHtml(formatCode(example.code)) + '</div>' +
                             '<p><strong>Approach:</strong> ' + (example.approach || 'No approach description provided') + '</p>' +
+                            contextPrecisionHtml +
                             improvementsHtml +
                             theoryHtml +
                         '</div>';
@@ -404,12 +474,25 @@
                 theoryHtml += '</div>';
             }
             
+            // Add Ragas info if context precision was calculated
+            let ragasInfoHtml = '';
+            if (data.has_context_precision) {
+                ragasInfoHtml = `
+                    <div class="ragas-info">
+                        <strong>🎯 Context Precision Evaluation:</strong> 
+                        Scores calculated using Ragas framework. Higher scores indicate better alignment between retrieved contexts and the provided ground truth.
+                    </div>
+                `;
+            }
+            
             result.innerHTML = `
                 <div class="result">
                     <h3>📋 Requirement:</h3>
                     <p>${data.requirement}</p>
                     <p><strong>Generated ${data.num_examples} examples</strong> ${data.has_theory_improvement ? 'with theory-based improvements' : 'without theory improvements'}</p>
+                    ${data.has_context_precision ? '<p><strong>🎯 Context Precision:</strong> Evaluated using Ragas</p>' : ''}
                 </div>
+                ${ragasInfoHtml}
                 ${examplesHtml}
                 ${theoryHtml}
             `;
