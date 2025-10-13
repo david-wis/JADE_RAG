@@ -57,6 +57,7 @@ class CodeGenerationResponse(BaseModel):
     num_examples: int
     has_theory_improvement: bool
     has_context_precision: bool
+    has_response_relevancy: bool
     error: Optional[str] = None
 
 @app.get("/")
@@ -127,6 +128,7 @@ async def generate_code_examples(request: CodeGenerationRequest):
             num_examples=result["num_examples"],
             has_theory_improvement=result["has_theory_improvement"],
             has_context_precision=result.get("has_context_precision", False),
+            has_response_relevancy=result.get("has_response_relevancy", False),
             error=result.get("error")
         )
     except Exception as e:

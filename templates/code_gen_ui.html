@@ -266,6 +266,21 @@
             color: #1976d2;
             font-size: 14px;
         }
+        .response-relevancy-score {
+            background: #e8f5e8;
+            border: 1px solid #4caf50;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .response-relevancy-score h5 {
+            margin: 0;
+            color: #2e7d32;
+            font-size: 14px;
+        }
         .score-value {
             background: #2196f3;
             color: white;
@@ -403,6 +418,7 @@
                     const hasTheoryAlignment = example.theory_alignment;
                     const hasOriginalCode = example.original_code;
                     const hasContextPrecision = example.context_precision_score !== undefined && example.context_precision_score !== null && example.context_precision_score !== '';
+                    const hasResponseRelevancy = example.response_relevancy_score !== undefined && example.response_relevancy_score !== null && example.response_relevancy_score !== '';
                     
                     const exampleTitle = example.description || 'Example ' + (index + 1);
                     const exampleId = index + 1; // Always use array index for consistent numbering
@@ -431,6 +447,22 @@
                             '</div>';
                     }
                     
+                    // Response Relevancy Score HTML
+                    let responseRelevancyHtml = '';
+                    if (hasResponseRelevancy) {
+                        const score = example.response_relevancy_score;
+                        let scoreClass = 'score-poor';
+                        if (score >= 0.8) scoreClass = 'score-excellent';
+                        else if (score >= 0.6) scoreClass = 'score-good';
+                        else if (score >= 0.4) scoreClass = 'score-fair';
+                        
+                        responseRelevancyHtml = 
+                            '<div class="response-relevancy-score">' +
+                                '<h5>📊 Response Relevancy Score (Ragas)</h5>' +
+                                '<span class="score-value ' + scoreClass + '">' + (score * 100).toFixed(1) + '%</span>' +
+                            '</div>';
+                    }
+                    
                     examplesHtml += 
                         '<div class="example">' +
                             '<div class="example-header">' +
@@ -441,6 +473,7 @@
                             '<div class="code-block">' + escapeHtml(formatCode(example.code)) + '</div>' +
                             '<p><strong>Approach:</strong> ' + (example.approach || 'No approach description provided') + '</p>' +
                             contextPrecisionHtml +
+                            responseRelevancyHtml +
                             improvementsHtml +
                             theoryHtml +
                         '</div>';
@@ -474,13 +507,23 @@
                 theoryHtml += '</div>';
             }
             
-            // Add Ragas info if context precision was calculated
+            // Add Ragas info if metrics were calculated
             let ragasInfoHtml = '';
-            if (data.has_context_precision) {
+            if (data.has_context_precision || data.has_response_relevancy) {
+                let metricsInfo = [];
+                if (data.has_context_precision) {
+                    metricsInfo.push('<strong>🎯 Context Precision:</strong> Measures how well retrieved contexts align with the provided ground truth.');
+                }
+                if (data.has_response_relevancy) {
+                    metricsInfo.push('<strong>📊 Response Relevancy:</strong> Measures how relevant the generated code is to the original requirement.');
+                }
+                
                 ragasInfoHtml = `
                     <div class="ragas-info">
-                        <strong>🎯 Context Precision Evaluation:</strong> 
-                        Scores calculated using Ragas framework. Higher scores indicate better alignment between retrieved contexts and the provided ground truth.
+                        <strong>📈 Ragas Evaluation Metrics:</strong><br>
+                        ${metricsInfo.join('<br>')}
+                        <br><br>
+                        <em>All scores calculated using the Ragas framework. Higher scores indicate better performance.</em>
                     </div>
                 `;
             }
@@ -491,6 +534,7 @@
                     <p>${data.requirement}</p>
                     <p><strong>Generated ${data.num_examples} examples</strong> ${data.has_theory_improvement ? 'with theory-based improvements' : 'without theory improvements'}</p>
                     ${data.has_context_precision ? '<p><strong>🎯 Context Precision:</strong> Evaluated using Ragas</p>' : ''}
+                    ${data.has_response_relevancy ? '<p><strong>📊 Response Relevancy:</strong> Evaluated using Ragas</p>' : ''}
                 </div>
                 ${ragasInfoHtml}
                 ${examplesHtml}

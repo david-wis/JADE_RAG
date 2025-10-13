@@ -7,11 +7,11 @@ import logging
 from rag_system import RAGSystem
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama.llms import OllamaLLM
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 # Ragas imports
 from ragas import SingleTurnSample
-from ragas.metrics import LLMContextPrecisionWithReference
+from ragas.metrics import LLMContextPrecisionWithReference, ResponseRelevancy
 from config import (
     AI_PROVIDER,
     OPENAI_API_KEY,
@@ -59,6 +59,8 @@ class CodeExampleGenerator:
         
         # Ragas configuration
         self.context_precision_metric = None
+        self.response_relevancy_metric = None
+        self.embeddings = None
         
     async def initialize(self):
         """Initialize the AI client based on provider"""
@@ -83,10 +85,26 @@ class CodeExampleGenerator:
                 )
                 logger.info(f"Initialized Ollama LLM with model: {self.model_name}")
             
-            # Initialize Ragas context precision metric
-            if self.llm:
-                self.context_precision_metric = LLMContextPrecisionWithReference(llm=self.llm)
-                logger.info("Ragas context precision metric initialized successfully")
+            # Initialize embeddings for Ragas
+            if self.ai_provider == "openai":
+                self.embeddings = OpenAIEmbeddings(
+                    api_key=self.openai_api_key,
+                    base_url=self.openai_base_url
+                )
+            else:
+                # For Ollama, we'll use the same embedding model as the RAG system
+                # This might need adjustment based on your setup
+                self.embeddings = self.rag_system.embedding_model
+            
+            # Initialize Ragas metrics
+            if self.llm and self.embeddings:
+                self.context_precision_metric = LLMContextPrecisionWithReference(llm=self.llm)  # type: ignore
+                # Initialize Response Relevancy metric with LLM and embeddings
+                self.response_relevancy_metric = ResponseRelevancy(
+                    llm=self.llm,  # type: ignore
+                    embeddings=self.embeddings  # type: ignore
+                )
+                logger.info("Ragas metrics (context precision and response relevancy) initialized successfully")
                 
             logger.info("Code example generator initialized successfully")
             
@@ -426,6 +444,40 @@ Proporciona tu respuesta usando formato XML:
         
         return enhanced_examples
     
+    async def calculate_response_relevancy(self, requirement: str, examples: List[Dict[str, Any]], 
+                                         theory_sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Calculate response relevancy scores for each example using Ragas"""
+        if not self.response_relevancy_metric:
+            logger.info("Response relevancy calculation skipped - no metric available")
+            return examples
+        
+        # Prepare retrieved contexts from theory sources
+        retrieved_contexts = []
+        for source in theory_sources:
+            retrieved_contexts.append(source['content'])
+        
+        enhanced_examples = []
+        
+        for example in examples:
+            # Create a sample for Ragas evaluation
+            sample = SingleTurnSample(
+                user_input=requirement,
+                response=example.get('code', ''),
+                retrieved_contexts=retrieved_contexts  # Use theory sources as context
+            )
+            
+            # Calculate response relevancy score
+            score = await self.response_relevancy_metric.single_turn_ascore(sample)
+            
+            # Add the score to the example
+            enhanced_example = example.copy()
+            enhanced_example["response_relevancy_score"] = float(score)
+            enhanced_examples.append(enhanced_example)
+            
+            logger.info(f"Response relevancy score for example {example.get('example_id', 'unknown')}: {score:.3f}")
+        
+        return enhanced_examples
+    
     @traceable(name="generate_examples")
     async def generate_examples(self, requirement: str, num_examples: int = 3, ground_truth: Optional[str] = None) -> Dict[str, Any]:
         """Main method to generate and improve code examples"""
@@ -464,13 +516,19 @@ Proporciona tu respuesta usando formato XML:
                     requirement, ground_truth, improved_examples, theory_sources
                 )
             
+            # Step 5: Calculate response relevancy scores for all examples
+            improved_examples = await self.calculate_response_relevancy(
+                requirement, improved_examples, theory_sources
+            )
+            
             return {
                 "requirement": requirement,
                 "examples": improved_examples,
                 "theory_sources": theory_sources,
                 "num_examples": len(improved_examples),
                 "has_theory_improvement": len(theory_sources) > 0,
-                "has_context_precision": ground_truth is not None and len(theory_sources) > 0
+                "has_context_precision": ground_truth is not None and len(theory_sources) > 0,
+                "has_response_relevancy": len(theory_sources) > 0  # Only calculated when theory sources are available
             }
             
         except Exception as e:
