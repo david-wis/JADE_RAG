@@ -287,6 +287,38 @@
             font-size: 14px;
             color: #4a148c;
         }
+        .answer-relevancy-score {
+            background: #e8f5e8;
+            border: 1px solid #4caf50;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .answer-relevancy-score h5 {
+            margin: 0;
+            color: #2e7d32;
+            font-size: 14px;
+        }
+        .inferred-requirement {
+            background: #fff3e0;
+            border: 1px solid #ff9800;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .inferred-requirement h5 {
+            margin: 0 0 8px 0;
+            color: #e65100;
+            font-size: 14px;
+        }
+        .inferred-requirement p {
+            margin: 0;
+            color: #bf360c;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -403,6 +435,8 @@
                     const hasTheoryAlignment = example.theory_alignment;
                     const hasOriginalCode = example.original_code;
                     const hasContextPrecision = example.context_precision_score !== undefined && example.context_precision_score !== null && example.context_precision_score !== '';
+                    const hasAnswerRelevancy = example.answer_relevancy_score !== undefined && example.answer_relevancy_score !== null && example.answer_relevancy_score !== '';
+                    const hasInferredRequirement = example.inferred_requirement && example.inferred_requirement.trim() !== '';
                     
                     const exampleTitle = example.description || 'Example ' + (index + 1);
                     const exampleId = index + 1; // Always use array index for consistent numbering
@@ -431,6 +465,32 @@
                             '</div>';
                     }
                     
+                    // Answer Relevancy Score HTML
+                    let answerRelevancyHtml = '';
+                    if (hasAnswerRelevancy) {
+                        const score = example.answer_relevancy_score;
+                        let scoreClass = 'score-poor';
+                        if (score >= 0.8) scoreClass = 'score-excellent';
+                        else if (score >= 0.6) scoreClass = 'score-good';
+                        else if (score >= 0.4) scoreClass = 'score-fair';
+                        
+                        answerRelevancyHtml = 
+                            '<div class="answer-relevancy-score">' +
+                                '<h5>🎯 Answer Relevancy Score (Custom)</h5>' +
+                                '<span class="score-value ' + scoreClass + '">' + (score * 100).toFixed(1) + '%</span>' +
+                            '</div>';
+                    }
+                    
+                    // Inferred Requirement HTML
+                    let inferredRequirementHtml = '';
+                    if (hasInferredRequirement) {
+                        inferredRequirementHtml = 
+                            '<div class="inferred-requirement">' +
+                                '<h5>🔍 Inferred Requirement:</h5>' +
+                                '<p>' + escapeHtml(example.inferred_requirement) + '</p>' +
+                            '</div>';
+                    }
+                    
                     examplesHtml += 
                         '<div class="example">' +
                             '<div class="example-header">' +
@@ -441,6 +501,8 @@
                             '<div class="code-block">' + escapeHtml(formatCode(example.code)) + '</div>' +
                             '<p><strong>Approach:</strong> ' + (example.approach || 'No approach description provided') + '</p>' +
                             contextPrecisionHtml +
+                            answerRelevancyHtml +
+                            inferredRequirementHtml +
                             improvementsHtml +
                             theoryHtml +
                         '</div>';
@@ -476,11 +538,21 @@
             
             // Add Ragas info if context precision was calculated
             let ragasInfoHtml = '';
-            if (data.has_context_precision) {
+            if (data.has_context_precision || data.has_answer_relevancy) {
+                let infoText = '';
+                if (data.has_context_precision && data.has_answer_relevancy) {
+                    infoText = '<strong>🎯 Evaluation Metrics:</strong><br>' +
+                               '• <strong>Context Precision:</strong> Ragas framework - measures alignment between retrieved contexts and ground truth<br>' +
+                               '• <strong>Answer Relevancy:</strong> Custom metric - measures how well generated code reflects the original requirement';
+                } else if (data.has_context_precision) {
+                    infoText = '<strong>🎯 Context Precision Evaluation:</strong> Scores calculated using Ragas framework. Higher scores indicate better alignment between retrieved contexts and the provided ground truth.';
+                } else if (data.has_answer_relevancy) {
+                    infoText = '<strong>🎯 Answer Relevancy Evaluation:</strong> Custom metric that compares the original requirement with the requirement inferred from generated code using semantic similarity.';
+                }
+                
                 ragasInfoHtml = `
                     <div class="ragas-info">
-                        <strong>🎯 Context Precision Evaluation:</strong> 
-                        Scores calculated using Ragas framework. Higher scores indicate better alignment between retrieved contexts and the provided ground truth.
+                        ${infoText}
                     </div>
                 `;
             }
@@ -491,6 +563,7 @@
                     <p>${data.requirement}</p>
                     <p><strong>Generated ${data.num_examples} examples</strong> ${data.has_theory_improvement ? 'with theory-based improvements' : 'without theory improvements'}</p>
                     ${data.has_context_precision ? '<p><strong>🎯 Context Precision:</strong> Evaluated using Ragas</p>' : ''}
+                    ${data.has_answer_relevancy ? '<p><strong>🎯 Answer Relevancy:</strong> Evaluated using custom metric</p>' : ''}
                 </div>
                 ${ragasInfoHtml}
                 ${examplesHtml}

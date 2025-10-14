@@ -11,7 +11,10 @@ from langchain_openai import ChatOpenAI
 
 # Ragas imports
 from ragas import SingleTurnSample
-from ragas.metrics import LLMContextPrecisionWithReference
+from ragas.metrics import LLMContextPrecisionWithReference, numeric_metric
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 from config import (
     AI_PROVIDER,
     OPENAI_API_KEY,
@@ -32,6 +35,39 @@ logger = logging.getLogger(__name__)
 
 # Import LangSmith for tracing
 from langsmith import traceable
+
+
+@numeric_metric(name="answer_relevancy", allowed_values=(0, 1))
+def answer_relevancy_metric(original_requirement: str, generated_code: str, inferred_requirement: str) -> float:
+    """
+    Calcula la relevancia de la respuesta comparando el requerimiento original
+    con el requerimiento inferido a partir del código generado.
+    
+    Args:
+        original_requirement: El requerimiento original
+        generated_code: El código generado
+        inferred_requirement: El requerimiento inferido a partir del código
+    
+    Returns:
+        float: Score de relevancia entre 0 y 1
+    """
+    try:
+        # Inicializar el modelo de embeddings (usando un modelo multilingüe)
+        model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+        
+        # Calcular embeddings
+        original_embedding = model.encode([original_requirement])
+        inferred_embedding = model.encode([inferred_requirement])
+        
+        # Calcular similitud coseno
+        similarity = cosine_similarity(original_embedding, inferred_embedding)[0][0]
+        
+        # Asegurar que el score esté entre 0 y 1
+        return float(max(0, min(1, similarity)))
+        
+    except Exception as e:
+        logger.error(f"Error calculating answer relevancy: {e}")
+        return 0.0
 
 
 class CodeExampleGenerator:
@@ -426,6 +462,83 @@ Proporciona tu respuesta usando formato XML:
         
         return enhanced_examples
     
+    @traceable(name="infer_requirement_from_code")
+    async def infer_requirement_from_code(self, code: str) -> str:
+        """Infer the requirement that could have generated the given code"""
+        try:
+            prompt = f"""Eres un instructor de programación en Python. Dado el siguiente código Python, infiere cuál podría haber sido el requerimiento o consigna que llevó a un estudiante a escribir este código.
+
+Código:
+```python
+{code}
+```
+
+Por favor, proporciona un requerimiento claro y específico que explique qué se le pidió al estudiante que hiciera. El requerimiento debe:
+1. Ser claro y específico
+2. Explicar qué funcionalidad se esperaba
+3. Estar escrito en español
+4. Ser conciso pero completo
+
+Responde únicamente con el requerimiento, sin explicaciones adicionales."""
+
+            # Query LLM using LangChain
+            messages = [
+                SystemMessage(content="Eres un instructor de programación en Python muy útil. Responde únicamente con el requerimiento solicitado."),
+                HumanMessage(content=prompt)
+            ]
+            
+            response = self.llm.invoke(messages)
+            
+            # Handle different response types (OpenAI has .content, Ollama returns string directly)
+            if hasattr(response, 'content'):
+                inferred_requirement = response.content.strip()
+            else:
+                inferred_requirement = str(response).strip()
+            
+            logger.info(f"Inferred requirement from code: {inferred_requirement[:100]}...")
+            return inferred_requirement
+            
+        except Exception as e:
+            logger.error(f"Error inferring requirement from code: {e}")
+            return "Error al inferir el requerimiento"
+    
+    async def calculate_answer_relevancy(self, requirement: str, examples: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Calculate answer relevancy scores for each example using the custom metric"""
+        try:
+            enhanced_examples = []
+            
+            for example in examples:
+                if "code" not in example or not example["code"]:
+                    logger.warning(f"No code found for example {example.get('example_id', 'unknown')}")
+                    enhanced_example = example.copy()
+                    enhanced_example["answer_relevancy_score"] = 0.0
+                    enhanced_examples.append(enhanced_example)
+                    continue
+                
+                # Infer requirement from the generated code
+                inferred_requirement = await self.infer_requirement_from_code(example["code"])
+                
+                # Calculate answer relevancy score using the custom metric
+                relevancy_score = answer_relevancy_metric(
+                    original_requirement=requirement,
+                    generated_code=example["code"],
+                    inferred_requirement=inferred_requirement
+                )
+                
+                # Add the score and inferred requirement to the example
+                enhanced_example = example.copy()
+                enhanced_example["answer_relevancy_score"] = float(relevancy_score)
+                enhanced_example["inferred_requirement"] = inferred_requirement
+                enhanced_examples.append(enhanced_example)
+                
+                logger.info(f"Answer relevancy score for example {example.get('example_id', 'unknown')}: {relevancy_score:.3f}")
+            
+            return enhanced_examples
+            
+        except Exception as e:
+            logger.error(f"Error calculating answer relevancy: {e}")
+            return examples
+    
     @traceable(name="generate_examples")
     async def generate_examples(self, requirement: str, num_examples: int = 3, ground_truth: Optional[str] = None) -> Dict[str, Any]:
         """Main method to generate and improve code examples"""
@@ -464,13 +577,17 @@ Proporciona tu respuesta usando formato XML:
                     requirement, ground_truth, improved_examples, theory_sources
                 )
             
+            # Step 5: Calculate answer relevancy scores for all examples
+            improved_examples = await self.calculate_answer_relevancy(requirement, improved_examples)
+            
             return {
                 "requirement": requirement,
                 "examples": improved_examples,
                 "theory_sources": theory_sources,
                 "num_examples": len(improved_examples),
                 "has_theory_improvement": len(theory_sources) > 0,
-                "has_context_precision": ground_truth is not None and len(theory_sources) > 0
+                "has_context_precision": ground_truth is not None and len(theory_sources) > 0,
+                "has_answer_relevancy": True
             }
             
         except Exception as e:
