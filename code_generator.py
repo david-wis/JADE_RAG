@@ -384,6 +384,7 @@ Por favor arma un nuevo ejemplo:
 2. Usando las funciones, métodos o enfoques recomendados de la teoría (prioriza hacerlo con funciones, metodos o enfoques del material provisto por más que cambie el código original)
 3. Haciendo que el código esté más alineado con las enseñanzas del curso
 4. Respetando el requerimiento original ya que el material solo define el estilo y no la consigna
+5. Si el requerimiento no indica dar ejemplos de ejecucion o comentarios, no los agregues
 
 IMPORTANTE:
 - Usa la indentación correcta de Python (4 espacios)
