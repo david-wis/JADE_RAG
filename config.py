@@ -45,3 +45,6 @@ LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "jade-rag")
 LANGSMITH_ENDPOINT = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
 LANGSMITH_TRACING = os.getenv("LANGSMITH_TRACING", "true").lower() == "true"
 ENABLE_LANGSMITH_TRACING = os.getenv("ENABLE_LANGSMITH_TRACING", "true").lower() == "true"
+
+# Answer Relevancy Configuration
+NUM_GENERATED_RUBRICS = int(os.getenv("NUM_GENERATED_RUBRICS", "3"))

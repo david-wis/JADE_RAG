@@ -27,6 +27,7 @@ from config import (
     LANGSMITH_PROJECT,
     LANGSMITH_ENDPOINT,
     ENABLE_LANGSMITH_TRACING,
+    NUM_GENERATED_RUBRICS,
 )
 
 # Configure logging
@@ -38,32 +39,54 @@ from langsmith import traceable
 
 
 @numeric_metric(name="answer_relevancy", allowed_values=(0, 1))
-def answer_relevancy_metric(original_requirement: str, generated_code: str, inferred_requirement: str) -> float:
+def answer_relevancy_metric(original_requirement: str, generated_code: str, generated_rubrics: List[str]) -> float:
     """
-    Calcula la relevancia de la respuesta comparando el requerimiento original
-    con el requerimiento inferido a partir del código generado.
+    Calcula la relevancia de la respuesta usando la fórmula:
+    answer relevancy = (1/N) * Σ[i=1 to N] cos(E_gi, E_o)
+    
+    Donde:
+    - E_gi: Embedding de la i-ésima rubrica generada
+    - E_o: Embedding del prompt original
+    - N: Cantidad de rubricas generadas
     
     Args:
-        original_requirement: El requerimiento original
-        generated_code: El código generado
-        inferred_requirement: El requerimiento inferido a partir del código
+        original_requirement: El requerimiento original (E_o)
+        generated_code: El código generado (no usado en la fórmula)
+        generated_rubrics: Lista de rubricas generadas a partir del código (E_gi)
     
     Returns:
         float: Score de relevancia entre 0 y 1
     """
     try:
+        if not generated_rubrics or len(generated_rubrics) == 0:
+            logger.warning("No generated rubrics provided for answer relevancy calculation")
+            return 0.0
+        
         # Inicializar el modelo de embeddings (usando un modelo multilingüe)
         model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
         
-        # Calcular embeddings
+        # Calcular embedding del requerimiento original (E_o)
         original_embedding = model.encode([original_requirement])
-        inferred_embedding = model.encode([inferred_requirement])
         
-        # Calcular similitud coseno
-        similarity = cosine_similarity(original_embedding, inferred_embedding)[0][0]
+        # Calcular embeddings de todas las rubricas generadas (E_gi)
+        generated_embeddings = model.encode(generated_rubrics)
+        
+        # Calcular similitudes coseno entre cada rubrica generada y el requerimiento original
+        similarities = []
+        for i, generated_embedding in enumerate(generated_embeddings):
+            similarity = cosine_similarity([generated_embedding], original_embedding)[0][0]
+            similarities.append(similarity)
+            logger.info(f"Cosine similarity for rubric {i+1}: {similarity:.3f}")
+        
+        # Aplicar la fórmula: (1/N) * Σ[i=1 to N] cos(E_gi, E_o)
+        N = len(generated_rubrics)
+        answer_relevancy = sum(similarities) / N
         
         # Asegurar que el score esté entre 0 y 1
-        return float(max(0, min(1, similarity)))
+        final_score = float(max(0, min(1, answer_relevancy)))
+        
+        logger.info(f"Answer relevancy calculated: {final_score:.3f} (average of {N} rubrics)")
+        return final_score
         
     except Exception as e:
         logger.error(f"Error calculating answer relevancy: {e}")
@@ -462,28 +485,72 @@ Proporciona tu respuesta usando formato XML:
         
         return enhanced_examples
     
-    @traceable(name="infer_requirement_from_code")
-    async def infer_requirement_from_code(self, code: str) -> str:
-        """Infer the requirement that could have generated the given code"""
+    @traceable(name="infer_requirements_from_code")
+    async def infer_requirements_from_code(self, code: str) -> List[str]:
+        """Infer multiple possible requirements that could have generated the given code"""
         try:
-            prompt = f"""Eres un instructor de programación en Python. Dado el siguiente código Python, infiere cuál podría haber sido el requerimiento o consigna que llevó a un estudiante a escribir este código.
+            prompt = f"""Eres un instructor de programación en Python. Dado el siguiente código Python, infiere {NUM_GENERATED_RUBRICS} posibles requerimientos o consignas diferentes que podrían haber llevado a un estudiante a escribir este código.
+
+EJEMPLO DE REFERENCIA:
+
+Código de ejemplo:
+```python
+def sumar_pares(lista):
+    suma = 0
+    for numero in lista:
+        if numero % 2 == 0:
+            suma += numero
+    return suma
+```
+
+Rubricas generadas:
+<rubric>
+<requirement>La función debe tomar una lista de números y devolver la suma de todos los números pares</requirement>
+</rubric>
+
+<rubric>
+<requirement>`sumar_pares` debe recorrer una lista y sumar únicamente los elementos que son divisibles por 2</requirement>
+</rubric>
+
+<rubric>
+<requirement>Debe calcular la suma total de los números pares presentes en una lista de enteros</requirement>
+</rubric>
+
+---
+
+AHORA ANALIZA ESTE CÓDIGO:
 
 Código:
 ```python
 {code}
 ```
 
-Por favor, proporciona un requerimiento claro y específico que explique qué se le pidió al estudiante que hiciera. El requerimiento debe:
+Por favor, proporciona {NUM_GENERATED_RUBRICS} requerimientos diferentes siguiendo el mismo formato del ejemplo. Cada requerimiento debe:
 1. Ser claro y específico
 2. Explicar qué funcionalidad se esperaba
 3. Estar escrito en español
 4. Ser conciso pero completo
+5. Representar diferentes interpretaciones posibles del código
+6. Usar diferentes palabras pero describir la misma funcionalidad básica
 
-Responde únicamente con el requerimiento, sin explicaciones adicionales."""
+Formatea tu respuesta usando formato XML con la siguiente estructura:
+<rubric>
+<requirement>primer requerimiento aquí</requirement>
+</rubric>
+
+<rubric>
+<requirement>segundo requerimiento aquí</requirement>
+</rubric>
+
+<rubric>
+<requirement>tercer requerimiento aquí</requirement>
+</rubric>
+
+"""
 
             # Query LLM using LangChain
             messages = [
-                SystemMessage(content="Eres un instructor de programación en Python muy útil. Responde únicamente con el requerimiento solicitado."),
+                SystemMessage(content="Eres un instructor de programación en Python muy útil. Siempre responde usando formato XML."),
                 HumanMessage(content=prompt)
             ]
             
@@ -491,16 +558,65 @@ Responde únicamente con el requerimiento, sin explicaciones adicionales."""
             
             # Handle different response types (OpenAI has .content, Ollama returns string directly)
             if hasattr(response, 'content'):
-                inferred_requirement = response.content.strip()
+                response_text = response.content.strip()
             else:
-                inferred_requirement = str(response).strip()
+                response_text = str(response).strip()
             
-            logger.info(f"Inferred requirement from code: {inferred_requirement[:100]}...")
-            return inferred_requirement
+            # Parse XML response to extract multiple requirements
+            requirements = self._parse_rubrics_xml_response(response_text)
+            
+            logger.info(f"Generated {len(requirements)} requirements from code")
+            return requirements
             
         except Exception as e:
-            logger.error(f"Error inferring requirement from code: {e}")
-            return "Error al inferir el requerimiento"
+            logger.error(f"Error inferring requirements from code: {e}")
+            return [f"Error al inferir el requerimiento {i+1}" for i in range(NUM_GENERATED_RUBRICS)]
+    
+    def _parse_rubrics_xml_response(self, response_text: str) -> List[str]:
+        """Parse XML response to extract multiple rubric requirements"""
+        try:
+            requirements = []
+            
+            # Clean the response text
+            cleaned_text = response_text.strip()
+            
+            # Look for rubric patterns
+            rubric_pattern = r'<rubric[^>]*>(.*?)</rubric>'
+            requirement_pattern = r'<requirement[^>]*>(.*?)</requirement>'
+            
+            # Find all rubric blocks
+            rubric_matches = re.findall(rubric_pattern, cleaned_text, re.DOTALL | re.IGNORECASE)
+            
+            if rubric_matches:
+                for rubric_content in rubric_matches:
+                    # Extract requirement from each rubric
+                    requirement_match = re.search(requirement_pattern, rubric_content, re.DOTALL | re.IGNORECASE)
+                    if requirement_match:
+                        requirement = requirement_match.group(1).strip()
+                        requirements.append(requirement)
+            else:
+                # Fallback: try to extract from plain text
+                lines = cleaned_text.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.startswith('<') and not line.startswith('```'):
+                        requirements.append(line)
+                        if len(requirements) >= NUM_GENERATED_RUBRICS:
+                            break
+            
+            # Ensure we have the right number of requirements
+            while len(requirements) < NUM_GENERATED_RUBRICS:
+                requirements.append(f"Requerimiento {len(requirements) + 1} inferido del código")
+            
+            # Limit to the configured number
+            requirements = requirements[:NUM_GENERATED_RUBRICS]
+            
+            logger.info(f"Parsed {len(requirements)} requirements from XML response")
+            return requirements
+            
+        except Exception as e:
+            logger.error(f"Error parsing rubrics XML response: {e}")
+            return [f"Error al inferir el requerimiento {i+1}" for i in range(NUM_GENERATED_RUBRICS)]
     
     async def calculate_answer_relevancy(self, requirement: str, examples: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Calculate answer relevancy scores for each example using the custom metric"""
@@ -512,26 +628,27 @@ Responde únicamente con el requerimiento, sin explicaciones adicionales."""
                     logger.warning(f"No code found for example {example.get('example_id', 'unknown')}")
                     enhanced_example = example.copy()
                     enhanced_example["answer_relevancy_score"] = 0.0
+                    enhanced_example["generated_rubrics"] = []
                     enhanced_examples.append(enhanced_example)
                     continue
                 
-                # Infer requirement from the generated code
-                inferred_requirement = await self.infer_requirement_from_code(example["code"])
+                # Infer multiple requirements from the generated code
+                generated_rubrics = await self.infer_requirements_from_code(example["code"])
                 
-                # Calculate answer relevancy score using the custom metric
+                # Calculate answer relevancy score using the custom metric with the formula
                 relevancy_score = answer_relevancy_metric(
                     original_requirement=requirement,
                     generated_code=example["code"],
-                    inferred_requirement=inferred_requirement
+                    generated_rubrics=generated_rubrics
                 )
                 
-                # Add the score and inferred requirement to the example
+                # Add the score and generated rubrics to the example
                 enhanced_example = example.copy()
                 enhanced_example["answer_relevancy_score"] = float(relevancy_score)
-                enhanced_example["inferred_requirement"] = inferred_requirement
+                enhanced_example["generated_rubrics"] = generated_rubrics
                 enhanced_examples.append(enhanced_example)
                 
-                logger.info(f"Answer relevancy score for example {example.get('example_id', 'unknown')}: {relevancy_score:.3f}")
+                logger.info(f"Answer relevancy score for example {example.get('example_id', 'unknown')}: {relevancy_score:.3f} (based on {len(generated_rubrics)} rubrics)")
             
             return enhanced_examples
             

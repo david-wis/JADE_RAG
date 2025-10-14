@@ -319,6 +319,36 @@
             color: #bf360c;
             font-style: italic;
         }
+        .generated-rubrics {
+            background: #f0f8ff;
+            border: 1px solid #4169e1;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .generated-rubrics h5 {
+            margin: 0 0 10px 0;
+            color: #1e3a8a;
+            font-size: 14px;
+        }
+        .rubric-item {
+            background: white;
+            border: 1px solid #e0e7ff;
+            border-radius: 3px;
+            padding: 8px;
+            margin: 5px 0;
+            font-size: 13px;
+            color: #374151;
+        }
+        .rubric-number {
+            background: #3b82f6;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-right: 8px;
+        }
     </style>
 </head>
 <body>
@@ -436,7 +466,7 @@
                     const hasOriginalCode = example.original_code;
                     const hasContextPrecision = example.context_precision_score !== undefined && example.context_precision_score !== null && example.context_precision_score !== '';
                     const hasAnswerRelevancy = example.answer_relevancy_score !== undefined && example.answer_relevancy_score !== null && example.answer_relevancy_score !== '';
-                    const hasInferredRequirement = example.inferred_requirement && example.inferred_requirement.trim() !== '';
+                    const hasGeneratedRubrics = example.generated_rubrics && example.generated_rubrics.length > 0;
                     
                     const exampleTitle = example.description || 'Example ' + (index + 1);
                     const exampleId = index + 1; // Always use array index for consistent numbering
@@ -481,13 +511,20 @@
                             '</div>';
                     }
                     
-                    // Inferred Requirement HTML
-                    let inferredRequirementHtml = '';
-                    if (hasInferredRequirement) {
-                        inferredRequirementHtml = 
-                            '<div class="inferred-requirement">' +
-                                '<h5>🔍 Inferred Requirement:</h5>' +
-                                '<p>' + escapeHtml(example.inferred_requirement) + '</p>' +
+                    // Generated Rubrics HTML
+                    let generatedRubricsHtml = '';
+                    if (hasGeneratedRubrics) {
+                        const rubricsList = example.generated_rubrics.map((rubric, rubricIndex) => 
+                            '<div class="rubric-item">' +
+                                '<span class="rubric-number">' + (rubricIndex + 1) + '</span>' +
+                                escapeHtml(rubric) +
+                            '</div>'
+                        ).join('');
+                        
+                        generatedRubricsHtml = 
+                            '<div class="generated-rubrics">' +
+                                '<h5>🔍 Generated Rubrics (' + example.generated_rubrics.length + '):</h5>' +
+                                rubricsList +
                             '</div>';
                     }
                     
@@ -502,7 +539,7 @@
                             '<p><strong>Approach:</strong> ' + (example.approach || 'No approach description provided') + '</p>' +
                             contextPrecisionHtml +
                             answerRelevancyHtml +
-                            inferredRequirementHtml +
+                            generatedRubricsHtml +
                             improvementsHtml +
                             theoryHtml +
                         '</div>';
@@ -543,11 +580,11 @@
                 if (data.has_context_precision && data.has_answer_relevancy) {
                     infoText = '<strong>🎯 Evaluation Metrics:</strong><br>' +
                                '• <strong>Context Precision:</strong> Ragas framework - measures alignment between retrieved contexts and ground truth<br>' +
-                               '• <strong>Answer Relevancy:</strong> Custom metric - measures how well generated code reflects the original requirement';
+                               '• <strong>Answer Relevancy:</strong> Custom metric - generates multiple rubrics from code and calculates average cosine similarity with original requirement';
                 } else if (data.has_context_precision) {
                     infoText = '<strong>🎯 Context Precision Evaluation:</strong> Scores calculated using Ragas framework. Higher scores indicate better alignment between retrieved contexts and the provided ground truth.';
                 } else if (data.has_answer_relevancy) {
-                    infoText = '<strong>🎯 Answer Relevancy Evaluation:</strong> Custom metric that compares the original requirement with the requirement inferred from generated code using semantic similarity.';
+                    infoText = '<strong>🎯 Answer Relevancy Evaluation:</strong> Custom metric that generates multiple possible rubrics from the code and calculates the average cosine similarity with the original requirement using the formula: (1/N) × Σ cos(E_gi, E_o).';
                 }
                 
                 ragasInfoHtml = `
