@@ -159,10 +159,8 @@ async def get_notebook_content(filename: str):
             notebook = nbformat.read(f, as_version=4)
         
         cells = []
-        for cell_idx, cell in enumerate(notebook.cells):
+        for cell in notebook.cells:
             cell_data = {
-                "index": cell_idx,
-                "type": cell.cell_type,
                 "content": cell.source.strip()
             }
             cells.append(cell_data)

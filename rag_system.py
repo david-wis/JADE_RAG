@@ -130,7 +130,7 @@ class TextSplitter:
     def visualize_chunks(self, text: str, metadata: Optional[Dict[str, Any]] = None) -> None:
         """Visualize how text would be split into chunks without actually splitting"""
         if metadata is None:
-            metadata = {"filename": "test", "cell_type": "test", "cell_index": 0, "notebook_path": "test"}
+            metadata = {"filename": "test", "notebook_path": "test"}
         
         print(f"\n=== CHUNK VISUALIZATION ===")
         print(f"Text length: {len(text)} characters")
@@ -273,8 +273,7 @@ class RAGSystem:
         """Visualize how a text would be split into chunks"""
         metadata = {
             "filename": filename,
-            "cell_type": "test",
-            "cell_index": 0,
+            # ...
             "notebook_path": f"test/{filename}"
         }
         self.text_splitter.visualize_chunks(text, metadata)
@@ -298,8 +297,7 @@ class RAGSystem:
             for i, chunk in enumerate(chunks):
                 f.write(f"CHUNK {i+1}:\n")
                 f.write(f"Filename: {chunk['metadata']['filename']}\n")
-                f.write(f"Cell type: {chunk['metadata']['cell_type']}\n")
-                f.write(f"Cell index: {chunk['metadata']['cell_index']}\n")
+                # ...
                 f.write(f"Length: {len(chunk['content'])} characters\n")
                 f.write("-" * 40 + "\n")
                 f.write(chunk['content'])
@@ -311,7 +309,7 @@ class RAGSystem:
     def _create_collection(self):
         """Create or get the JADE notebooks collection in Weaviate"""
         collection_name = "JadeNotebooks"
-
+        
         # Check if collection exists
         if self.client.schema.exists(collection_name):
             logger.info(f"Collection {collection_name} already exists")
@@ -334,16 +332,6 @@ class RAGSystem:
                     "description": "The name of the notebook file",
                 },
                 {
-                    "name": "cell_type",
-                    "dataType": ["string"],
-                    "description": "The type of cell (markdown, code)",
-                },
-                {
-                    "name": "cell_index",
-                    "dataType": ["int"],
-                    "description": "The index of the cell in the notebook",
-                },
-                {
                     "name": "notebook_path",
                     "dataType": ["string"],
                     "description": "The full path to the notebook file",
@@ -364,28 +352,20 @@ class RAGSystem:
             combined_content = []
             filename = os.path.basename(notebook_path)
 
-            for cell_idx, cell in enumerate(notebook.cells):
-                if cell.cell_type == "markdown":
-                    content = cell.source.strip()
-                    if content:
-                        combined_content.append(content)
-                        
-                elif cell.cell_type == "code":
-                    code_content = cell.source.strip()
-                    if code_content:
-                        combined_content.append(code_content)
+            for cell in notebook.cells:
+                cell_text = cell.source.strip()
+                if cell_text:
+                    combined_content.append(cell_text)
 
             if not combined_content:
                 return []
 
             # Join all content with double newlines
             full_content = "\n\n".join(combined_content)
-            
+
             # Create metadata for the combined content
             metadata = {
                 "filename": filename,
-                "cell_type": "mixed",
-                "cell_index": 0,
                 "notebook_path": notebook_path,
                 "total_cells": len(notebook.cells)
             }
@@ -539,8 +519,7 @@ class RAGSystem:
                     properties = {
                         "content": chunk["content"],
                         "filename": chunk["metadata"]["filename"],
-                        "cell_type": chunk["metadata"]["cell_type"],
-                        "cell_index": chunk["metadata"]["cell_index"],
+                        # ...
                         "notebook_path": chunk["metadata"]["notebook_path"],
                     }
 
@@ -590,7 +569,7 @@ class RAGSystem:
             results = (
                 self.client.query.get(
                     "JadeNotebooks",
-                    ["content", "filename", "cell_type", "cell_index", "notebook_path"],
+                    ["content", "filename", "notebook_path"],
                 )
                 .with_near_vector({"vector": query_embedding})
                 .with_limit(retrieval_count)
@@ -619,8 +598,7 @@ class RAGSystem:
                         "distance": distance,
                         "metadata": {
                             "filename": item["filename"],
-                            "cell_type": item["cell_type"],
-                            "cell_index": item["cell_index"],
+                            # ...
                             "notebook_path": item["notebook_path"],
                         },
                     }
@@ -670,7 +648,7 @@ class RAGSystem:
             results = (
                 self.client.query.get(
                     "JadeNotebooks",
-                    ["content", "filename", "cell_type", "cell_index", "notebook_path"],
+                    ["content", "filename", "notebook_path"],
                 )
                 .with_near_vector({"vector": question_embedding})
                 .with_limit(retrieval_count)
@@ -703,8 +681,7 @@ class RAGSystem:
                         "distance": distance,
                         "metadata": {
                             "filename": item["filename"],
-                            "cell_type": item["cell_type"],
-                            "cell_index": item["cell_index"],
+                            # ...
                             "notebook_path": item["notebook_path"],
                         },
                     }
