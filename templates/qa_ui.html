@@ -323,7 +323,16 @@
             <textarea id="question" placeholder="e.g., What are variables in Python? How do I use functions?"></textarea>
         </div>
         
+        <div class="input-group">
+            <label for="max_class">Filter by class number (optional):</label>
+            <input type="number" id="max_class" placeholder="e.g., 2 (only classes 0-2)" min="0" max="99">
+            <small style="color: #666; font-size: 14px; margin-top: 5px; display: block;">
+                Leave empty to search all classes. Enter a number to search only up to that class number.
+            </small>
+        </div>
+        
         <button onclick="askQuestion()">Ask Question</button>
+        <button onclick="getAvailableClasses()">Show Available Classes</button>
         <button onclick="ingestNotebooks()">Re-ingest Notebooks</button>
         
         <div class="loading" id="loading">
@@ -354,6 +363,9 @@
                 return;
             }
             
+            const maxClass = document.getElementById('max_class').value;
+            const maxClassNumber = maxClass ? parseInt(maxClass) : null;
+            
             const loading = document.getElementById('loading');
             const result = document.getElementById('result');
             
@@ -361,15 +373,21 @@
             result.innerHTML = '';
             
             try {
+                const requestBody = {
+                    question: question,
+                    max_results: 5
+                };
+                
+                if (maxClassNumber !== null) {
+                    requestBody.max_class_number = maxClassNumber;
+                }
+                
                 const response = await fetch('/query', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        question: question,
-                        max_results: 5
-                    })
+                    body: JSON.stringify(requestBody)
                 });
                 
                 if (!response.ok) {
@@ -378,6 +396,47 @@
                 
                 const data = await response.json();
                 displayResult(data);
+            } catch (error) {
+                result.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+        
+        async function getAvailableClasses() {
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+            
+            loading.style.display = 'block';
+            result.innerHTML = '';
+            
+            try {
+                const response = await fetch('/classes', {
+                    method: 'GET'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const classesList = data.available_classes.map(num => 
+                    `<span style="background: #007bff; color: white; padding: 4px 8px; border-radius: 4px; margin: 2px; display: inline-block;">Class ${num}</span>`
+                ).join('');
+                
+                result.innerHTML = `
+                    <div class="result">
+                        <h3>📚 Available Classes</h3>
+                        <p><strong>Total classes:</strong> ${data.total_classes}</p>
+                        <p><strong>Range:</strong> Class ${data.min_class} to Class ${data.max_class}</p>
+                        <div style="margin-top: 15px;">
+                            ${classesList}
+                        </div>
+                        <p style="margin-top: 15px; color: #666; font-size: 14px;">
+                            Use the class number filter above to search only up to a specific class number.
+                        </p>
+                    </div>
+                `;
             } catch (error) {
                 result.innerHTML = `<div class="error">Error: ${error.message}</div>`;
             } finally {

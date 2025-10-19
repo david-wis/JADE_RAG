@@ -373,6 +373,14 @@
             </small>
         </div>
         
+        <div class="input-group">
+            <label for="max_class_code">Filter by class number (optional):</label>
+            <input type="number" id="max_class_code" placeholder="e.g., 2 (only classes 0-2)" min="0" max="99">
+            <small style="color: #666; font-size: 14px; margin-top: 5px; display: block;">
+                Leave empty to search all classes. Enter a number to search only up to that class number for theory sources.
+            </small>
+        </div>
+        
         <div class="input-row">
             <div class="input-group">
                 <label for="num_examples">Number of Examples:</label>
@@ -404,6 +412,8 @@
             const requirement = document.getElementById('requirement').value.trim();
             const groundTruth = document.getElementById('ground_truth').value.trim();
             const numExamples = parseInt(document.getElementById('num_examples').value);
+            const maxClass = document.getElementById('max_class_code').value;
+            const maxClassNumber = maxClass ? parseInt(maxClass) : null;
             
             if (!requirement) {
                 alert('Please enter a rubric requirement');
@@ -425,6 +435,11 @@
                 // Only include ground_truth if it's provided
                 if (groundTruth) {
                     requestBody.ground_truth = groundTruth;
+                }
+                
+                // Only include max_class_number if it's provided
+                if (maxClassNumber !== null) {
+                    requestBody.max_class_number = maxClassNumber;
                 }
                 
                 const response = await fetch('/generate-code', {

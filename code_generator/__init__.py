@@ -52,7 +52,7 @@ class CodeExampleGenerator:
             raise
     
     @traceable(name="generate_examples")
-    async def generate_examples(self, requirement: str, num_examples: int = 3, ground_truth: Optional[str] = None) -> Dict[str, Any]:
+    async def generate_examples(self, requirement: str, num_examples: int = 3, ground_truth: Optional[str] = None, max_class_number: Optional[int] = None) -> Dict[str, Any]:
         """Main method to generate and improve code examples."""
         try:
             logger.info(f"Generating {num_examples} examples for requirement: {requirement}")
@@ -70,7 +70,7 @@ class CodeExampleGenerator:
             
             # Step 2: Get relevant theory from notebooks using both requirement and examples
             theory_sources = await self.theory_improver.get_relevant_theory(
-                self.rag_system, requirement, initial_examples, max_results=5
+                self.rag_system, requirement, initial_examples, max_results=5, max_class_number=max_class_number
             )
             
             # Step 3: Improve examples with theory

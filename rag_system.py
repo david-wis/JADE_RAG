@@ -1,6 +1,7 @@
 import os
 import asyncio
 import json
+import re
 from typing import List, Dict, Any, Optional
 import weaviate
 import nbformat
@@ -48,6 +49,39 @@ logger = logging.getLogger(__name__)
 # Import LangSmith for tracing
 from langsmith import Client
 from langsmith import traceable
+
+
+def extract_class_number(filename: str) -> int:
+    """
+    Extract the class number from notebook filename.
+    
+    Examples:
+    - "00 - Variables.ipynb" -> 0
+    - "01 - Operadores aritméticos.ipynb" -> 1
+    - "03_Funciones_utiles_y_Errores.ipynb" -> 3
+    - "04.2-ciclos-while.ipynb" -> 4
+    - "09.1-for.ipynb" -> 9
+    - "09.2-intro-listas.ipynb" -> 9
+    
+    Args:
+        filename: The notebook filename
+        
+    Returns:
+        The class number as an integer, or 999 if no number is found
+    """
+    # Remove .ipynb extension
+    name_without_ext = filename.replace('.ipynb', '')
+    
+    # Try to match number at the beginning of the filename
+    # This handles patterns like "00", "01", "03", "04.2", "09.1", etc.
+    match = re.match(r'^(\d+)', name_without_ext)
+    
+    if match:
+        return int(match.group(1))
+    else:
+        # If no number is found, assign a high number to put it at the end
+        logger.warning(f"No class number found in filename: {filename}, assigning 999")
+        return 999
 
 
 class TextSplitter:
@@ -387,6 +421,11 @@ class RAGSystem:
                     "dataType": ["string"],
                     "description": "The full path to the notebook file",
                 },
+                {
+                    "name": "class_number",
+                    "dataType": ["int"],
+                    "description": "The class number extracted from the notebook filename",
+                },
             ],
         }
 
@@ -415,10 +454,12 @@ class RAGSystem:
             full_content = "\n\n".join(combined_content)
 
             # Create metadata for the combined content
+            class_number = extract_class_number(filename)
             metadata = {
                 "filename": filename,
                 "notebook_path": notebook_path,
-                "total_cells": len(notebook.cells)
+                "total_cells": len(notebook.cells),
+                "class_number": class_number
             }
             
             # Use text splitter to split the combined content
@@ -515,8 +556,8 @@ class RAGSystem:
                     properties = {
                         "content": chunk["content"],
                         "filename": chunk["metadata"]["filename"],
-                        # ...
                         "notebook_path": chunk["metadata"]["notebook_path"],
+                        "class_number": chunk["metadata"]["class_number"],
                     }
 
                     batch.add_data_object(
@@ -536,7 +577,7 @@ class RAGSystem:
             raise
 
     @traceable(name="retrieve_documents")
-    async def retrieve_documents(self, query: str, max_results: int) -> List[Dict[str, Any]]:
+    async def retrieve_documents(self, query: str, max_results: int, max_class_number: Optional[int] = None) -> List[Dict[str, Any]]:
         """Retrieve relevant documents from vector database without LLM processing"""
         try:
             if not self.client:
@@ -552,17 +593,26 @@ class RAGSystem:
             # Generate embedding for the query
             query_embedding = self.embedding_model.encode([query]).tolist()[0]
 
-            # Search for relevant documents in Weaviate
-            results = (
+            # Build the query with optional class number filtering
+            query_builder = (
                 self.client.query.get(
                     "JadeNotebooks",
-                    ["content", "filename", "notebook_path"],
+                    ["content", "filename", "notebook_path", "class_number"],
                 )
                 .with_near_vector({"vector": query_embedding})
                 .with_limit(retrieval_count)
                 .with_additional(["certainty", "distance"])
-                .do()
             )
+            
+            # Add class number filter if specified
+            if max_class_number is not None:
+                query_builder = query_builder.with_where({
+                    "path": ["class_number"],
+                    "operator": "LessThanEqual",
+                    "valueInt": max_class_number
+                })
+            
+            results = query_builder.do()
 
             if not results.get("data", {}).get("Get", {}).get("JadeNotebooks"):
                 return []
@@ -589,8 +639,8 @@ class RAGSystem:
                         "distance": distance,
                         "metadata": {
                             "filename": item["filename"],
-                            # ...
                             "notebook_path": item["notebook_path"],
+                            "class_number": item["class_number"],
                         },
                     }
                 )
@@ -610,7 +660,7 @@ class RAGSystem:
             return []
 
     @traceable(name="rag_query")
-    async def query(self, question: str, max_results: int) -> Dict[str, Any]:
+    async def query(self, question: str, max_results: int, max_class_number: Optional[int] = None) -> Dict[str, Any]:
         """Query the RAG system with optional reranking"""
         try:
             if not self.client:
@@ -626,17 +676,26 @@ class RAGSystem:
             # Generate embedding for the question
             question_embedding = self.embedding_model.encode([question]).tolist()[0]
 
-            # Search for relevant documents in Weaviate
-            results = (
+            # Build the query with optional class number filtering
+            query_builder = (
                 self.client.query.get(
                     "JadeNotebooks",
-                    ["content", "filename", "notebook_path"],
+                    ["content", "filename", "notebook_path", "class_number"],
                 )
                 .with_near_vector({"vector": question_embedding})
                 .with_limit(retrieval_count)
                 .with_additional(["certainty", "distance"])
-                .do()
             )
+            
+            # Add class number filter if specified
+            if max_class_number is not None:
+                query_builder = query_builder.with_where({
+                    "path": ["class_number"],
+                    "operator": "LessThanEqual",
+                    "valueInt": max_class_number
+                })
+            
+            results = query_builder.do()
 
             if not results.get("data", {}).get("Get", {}).get("JadeNotebooks"):
                 return {
@@ -663,8 +722,8 @@ class RAGSystem:
                         "distance": distance,
                         "metadata": {
                             "filename": item["filename"],
-                            # ...
                             "notebook_path": item["notebook_path"],
+                            "class_number": item["class_number"],
                         },
                     }
                 )

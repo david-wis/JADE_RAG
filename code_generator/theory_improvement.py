@@ -19,7 +19,7 @@ class TheoryImprover:
         self.llm_factory = llm_factory
         self.xml_parser = XMLParser()
     
-    async def get_relevant_theory(self, rag_system, requirement: str, examples: Optional[List[Dict[str, Any]]] = None, max_results: int = 5) -> List[Dict[str, Any]]:
+    async def get_relevant_theory(self, rag_system, requirement: str, examples: Optional[List[Dict[str, Any]]] = None, max_results: int = 5, max_class_number: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get relevant theoretical content from notebooks using RAG."""
         try:
             # Create a comprehensive query that includes both requirement and examples
@@ -37,7 +37,7 @@ class TheoryImprover:
             combined_query = " ".join(query_parts)
             
             # Retrieve relevant documents from vector database (no LLM processing)
-            theory_sources = await rag_system.retrieve_documents(combined_query, max_results=max_results)
+            theory_sources = await rag_system.retrieve_documents(combined_query, max_results=max_results, max_class_number=max_class_number)
             
             return theory_sources
                 

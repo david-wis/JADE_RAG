@@ -39,6 +39,7 @@ app = FastAPI(title="JADE RAG System", version="1.0.0", lifespan=lifespan)
 class QueryRequest(BaseModel):
     question: str
     max_results: Optional[int] = 5
+    max_class_number: Optional[int] = None
 
 class QueryResponse(BaseModel):
     answer: str
@@ -49,6 +50,7 @@ class CodeGenerationRequest(BaseModel):
     requirement: str
     num_examples: Optional[int] = 3
     ground_truth: Optional[str] = None
+    max_class_number: Optional[int] = None
 
 class CodeGenerationResponse(BaseModel):
     requirement: str
@@ -87,7 +89,11 @@ async def query_rag(request: QueryRequest):
         if not rag_system:
             raise HTTPException(status_code=500, detail="RAG system not initialized")
         
-        result = await rag_system.query(request.question, max_results=request.max_results or 5)
+        result = await rag_system.query(
+            request.question, 
+            max_results=request.max_results or 5,
+            max_class_number=request.max_class_number
+        )
         return QueryResponse(
             answer=result["answer"],
             sources=result["sources"],
@@ -117,7 +123,8 @@ async def generate_code_examples(request: CodeGenerationRequest):
         result = await code_generator.generate_examples(
             request.requirement, 
             request.num_examples or 3,
-            request.ground_truth
+            request.ground_truth,
+            request.max_class_number
         )
         
         return CodeGenerationResponse(
@@ -139,6 +146,41 @@ async def health_check():
         "rag_initialized": rag_system is not None,
         "code_generator_initialized": code_generator is not None
     }
+
+@app.get("/classes")
+async def get_available_classes():
+    """Get information about available classes and their numbers"""
+    try:
+        if not rag_system:
+            raise HTTPException(status_code=500, detail="RAG system not initialized")
+        
+        # Get all unique class numbers from Weaviate
+        results = (
+            rag_system.client.query
+            .aggregate("JadeNotebooks")
+            .with_group_by_filter(["class_number"])
+            .with_fields("groupedBy { value }")
+            .do()
+        )
+        
+        class_numbers = []
+        if results.get("data", {}).get("Aggregate", {}).get("JadeNotebooks"):
+            for group in results["data"]["Aggregate"]["JadeNotebooks"]:
+                class_num = group.get("groupedBy", {}).get("value")
+                if class_num is not None:
+                    class_numbers.append(int(class_num))
+        
+        # Sort class numbers
+        class_numbers.sort()
+        
+        return {
+            "available_classes": class_numbers,
+            "total_classes": len(class_numbers),
+            "min_class": min(class_numbers) if class_numbers else None,
+            "max_class": max(class_numbers) if class_numbers else None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/notebook/{filename}")
 async def get_notebook_content(filename: str):
