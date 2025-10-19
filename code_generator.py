@@ -30,6 +30,8 @@ from config import (
     LANGSMITH_ENDPOINT,
     ENABLE_LANGSMITH_TRACING,
     NUM_GENERATED_RUBRICS,
+    TEMPERATURE_EXAMPLE_GENERATION,
+    TEMPERATURE_THEORY_CORRECTION,
 )
 
 # Configure logging
@@ -133,14 +135,14 @@ class CodeExampleGenerator:
                     model=self.openai_model,
                     api_key=SecretStr(self.openai_api_key) if self.openai_api_key else None,
                     base_url=self.openai_base_url,
-                    temperature=0.8
+                    temperature=TEMPERATURE_EXAMPLE_GENERATION
                 )
                 logger.info(f"Initialized OpenAI LLM with model: {self.openai_model}")
             else:
                 # Initialize Ollama LLM
                 self.llm = OllamaLLM(
                     model=self.model_name,
-                    temperature=0.8,
+                    temperature=TEMPERATURE_EXAMPLE_GENERATION,
                     base_url=f"http://{self.ollama_host}:{self.ollama_port}"
                 )
                 logger.info(f"Initialized Ollama LLM with model: {self.model_name}")
@@ -163,6 +165,26 @@ class CodeExampleGenerator:
             logger.error(f"Failed to initialize code generator: {e}")
             raise
     
+    def _create_llm_with_temperature(self, temperature: float):
+        """Create an LLM instance with a specific temperature"""
+        if self.ai_provider == "openai":
+            if not self.openai_api_key:
+                raise Exception("OpenAI API key is required when using OpenAI provider")
+            
+            return ChatOpenAI(
+                model=self.openai_model,
+                api_key=SecretStr(self.openai_api_key) if self.openai_api_key else None,
+                base_url=self.openai_base_url,
+                temperature=temperature
+            )
+        else:
+            # Initialize Ollama LLM
+            return OllamaLLM(
+                model=self.model_name,
+                temperature=temperature,
+                base_url=f"http://{self.ollama_host}:{self.ollama_port}"
+            )
+    
     @traceable(name="generate_initial_examples")
     async def generate_initial_examples(self, requirement: str, num_examples: int = 3) -> List[Dict[str, Any]]:
         """Generate initial code examples based on the requirement"""
@@ -181,6 +203,7 @@ IMPORTANTE:
 - El código debe ser correcto, pero no es necesario que sea eficiente
 - Debes asumir tus conocimientos son básicos (por ejemplo, no uses clases ni lambdas).
 - El código debe ser lo más imperativo posible (evita usar funciones de Python que simplifiquen el código)
+- El código debe ser muy simple y corto.
 
 Formatea tu respuesta usando formato XML con la siguiente estructura:
 <example>
@@ -382,6 +405,8 @@ Asegúrate de que los ejemplos sean diversos y demuestren diferentes formas de r
             for example in examples:
                 prompt = f"""Eres un instructor de programación en Python. Tengo un ejemplo de código que cumple con un requerimiento, y quiero que lo adaptes basándote en los materiales del curso.
 
+El objetivo es crear otro programa EQUIVALENTE al original, pero siguiendo las recomendaciones de la teoría.
+
 Requerimiento Original: {requirement}
 
 Teoría del Curso y Mejores Prácticas:
@@ -395,8 +420,8 @@ Enfoque: {example['approach']}
 Por favor arma un nuevo ejemplo:
 1. Siguiendo las mejores prácticas mencionadas en la teoría del curso
 2. Usando las funciones, métodos o enfoques recomendados de la teoría (prioriza hacerlo con funciones, metodos o enfoques del material provisto por más que cambie el código original)
-3. Haciendo que el código esté más alineado con las enseñanzas del curso
-4. Respetando el requerimiento original ya que el material solo define el estilo y no la consigna
+3. Respetando el requerimiento original ya que el material solo define el estilo y no la consigna
+4. Manteniendo inputs, outputs y comportamiento del programa original.
 5. Si el requerimiento no indica dar ejemplos de ejecucion o comentarios, no los agregues
 
 IMPORTANTE:
@@ -405,25 +430,35 @@ IMPORTANTE:
 - El código debe ser correcto, pero no es necesario que sea eficiente
 - Debes asumir tus conocimientos son básicos (por ejemplo, no uses clases ni lambdas).
 - El código debe ser lo más imperativo posible (evita usar funciones de Python que simplifiquen el código)
+- El código debe ser muy simple y corto.
+
+Ejemplo:
+Supongamos que el requerimiento es "Crear una función que valide la existencia de un archivo txt" y hay un ejemplo de la teoria sobre como leer un csv y validar que tenga exactamente 10 filas.
+- Si hay una explicación teoríca relevante (no la consigna de un ejercicio), deberías tenerla en cuenta.
+- Deberías usar el ejemplo de la teoria para crear un nuevo ejemplo que valide la existencia de un archivo txt (por ejemplo usando open si el material lo indica).
+- No deberías modificar el código para que trabaje con csvs.
+- No deberías tener en cuenta la validación de cantidad de filas.
+
+Antes de dar tu respuesta quiero que pienses si el ejemplo que estas proponiendo es verdaderamente equivalente al original y lo corrijas si no lo es.
+Quiero que indiques por que son equivalentes dentro del apartado de approach.
 
 Proporciona tu respuesta usando formato XML:
 <example>
 <code>código python mejorado aquí</code>
-<approach>explicación de las mejoras</approach>
+<approach>explicación de las mejoras y por que el código es equivalente al original</approach>
 <improvements>lista de mejoras</improvements>
 <theory_alignment>cómo se alinea con la teoría del curso</theory_alignment>
 </example>"""
 
-                # Query LLM using LangChain
-                if not self.llm:
-                    raise Exception("LLM not initialized")
+                # Create LLM instance with lower temperature for theory-based correction
+                theory_llm = self._create_llm_with_temperature(TEMPERATURE_THEORY_CORRECTION)
                     
                 messages = [
                     SystemMessage(content="Eres un instructor de programación en Python muy útil. Siempre responde usando formato XML y escribe todo en ESPAÑOL únicamente."),
                     HumanMessage(content=prompt)
                 ]
                 
-                response = self.llm.invoke(messages)
+                response = theory_llm.invoke(messages)
                 
                 # Handle different response types (OpenAI has .content, Ollama returns string directly)
                 if hasattr(response, 'content'):

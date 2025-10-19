@@ -34,6 +34,8 @@ from config import (
     LANGSMITH_ENDPOINT,
     LANGSMITH_TRACING,
     ENABLE_LANGSMITH_TRACING,
+    TEMPERATURE_EXAMPLE_GENERATION,
+    TEMPERATURE_THEORY_CORRECTION,
 )
 from collections import Counter
 import matplotlib.pyplot as plt
@@ -260,6 +262,10 @@ class RAGSystem:
         # LangSmith configuration
         self.enable_langsmith_tracing = ENABLE_LANGSMITH_TRACING
         self.langsmith_client = None
+        
+        # Temperature configurations
+        self.temperature_example_generation = TEMPERATURE_EXAMPLE_GENERATION
+        self.temperature_theory_correction = TEMPERATURE_THEORY_CORRECTION
 
     async def initialize(self):
         """Initialize the RAG system components"""
@@ -322,6 +328,34 @@ class RAGSystem:
         except Exception as e:
             logger.error(f"Failed to initialize RAG system: {e}")
             raise
+    
+    def _create_llm_with_temperature(self, temperature: float):
+        """Create an LLM instance with a specific temperature"""
+        if self.ai_provider == "openai":
+            if not self.openai_api_key:
+                raise Exception("OpenAI API key is required when using OpenAI provider")
+            
+            return ChatOpenAI(
+                model=self.openai_model,
+                api_key=self.openai_api_key,
+                base_url=self.openai_base_url,
+                temperature=temperature
+            )
+        else:
+            # Initialize Ollama LLM
+            return OllamaLLM(
+                model=self.model_name,
+                temperature=temperature,
+                base_url=f"http://{self.ollama_host}:{self.ollama_port}"
+            )
+    
+    def get_llm_for_example_generation(self):
+        """Get LLM instance configured for creative example generation (higher temperature)"""
+        return self._create_llm_with_temperature(self.temperature_example_generation)
+    
+    def get_llm_for_theory_correction(self):
+        """Get LLM instance configured for precise theory-based correction (lower temperature)"""
+        return self._create_llm_with_temperature(self.temperature_theory_correction)
     
     def _create_collection(self):
         """Create or get the JADE notebooks collection in Weaviate"""
