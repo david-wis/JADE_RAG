@@ -49,7 +49,11 @@ ENABLE_LANGSMITH_TRACING = os.getenv("ENABLE_LANGSMITH_TRACING", "true").lower()
 
 # Temperature Configuration
 TEMPERATURE_EXAMPLE_GENERATION = float(os.getenv("TEMPERATURE_EXAMPLE_GENERATION", "0.7"))  # For creative example generation
-TEMPERATURE_THEORY_CORRECTION = float(os.getenv("TEMPERATURE_THEORY_CORRECTION", "0.6"))  # For precise theory-based correction
+TEMPERATURE_THEORY_CORRECTION = float(os.getenv("TEMPERATURE_THEORY_CORRECTION", "0.7"))  # For precise theory-based correction
+TEMPERATURE_FILTERING = float(os.getenv("TEMPERATURE_FILTERING", "0.6"))  # For precise filtering of theory-specific elements
 
 # Answer Relevancy Configuration
 NUM_GENERATED_RUBRICS = int(os.getenv("NUM_GENERATED_RUBRICS", "3"))
+
+# Code Generator Configuration
+ENABLE_FILTERING = os.getenv("ENABLE_FILTERING", "true").lower() == "true"
