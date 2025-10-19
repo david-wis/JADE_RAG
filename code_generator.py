@@ -4,6 +4,7 @@ import json
 import re
 from typing import List, Dict, Any, Optional
 import logging
+from pydantic import SecretStr
 from rag_system import RAGSystem
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama.llms import OllamaLLM
@@ -12,6 +13,7 @@ from langchain_openai import ChatOpenAI
 # Ragas imports
 from ragas import SingleTurnSample
 from ragas.metrics import LLMContextPrecisionWithReference, numeric_metric
+from ragas.llms.base import llm_factory, instructor_llm_factory
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
@@ -112,6 +114,7 @@ class CodeExampleGenerator:
         
         # Initialize LLM
         self.llm = None
+        self.ragas_llm = None
         
         # LangSmith configuration
         self.enable_langsmith_tracing = ENABLE_LANGSMITH_TRACING
@@ -128,7 +131,7 @@ class CodeExampleGenerator:
                 
                 self.llm = ChatOpenAI(
                     model=self.openai_model,
-                    api_key=self.openai_api_key,
+                    api_key=SecretStr(self.openai_api_key) if self.openai_api_key else None,
                     base_url=self.openai_base_url,
                     temperature=0.8
                 )
@@ -142,9 +145,16 @@ class CodeExampleGenerator:
                 )
                 logger.info(f"Initialized Ollama LLM with model: {self.model_name}")
             
+            # Initialize Ragas LLM for metrics
+            if self.ai_provider == "openai":
+                self.ragas_llm = llm_factory('gpt-4o-mini')
+            else:
+                # For Ollama, we'll use the model name directly
+                self.ragas_llm = llm_factory(self.model_name)
+            
             # Initialize Ragas context precision metric
-            if self.llm:
-                self.context_precision_metric = LLMContextPrecisionWithReference(llm=self.llm)
+            if self.ragas_llm:
+                self.context_precision_metric = LLMContextPrecisionWithReference(llm=self.ragas_llm)
                 logger.info("Ragas context precision metric initialized successfully")
                 
             logger.info("Code example generator initialized successfully")
@@ -186,6 +196,9 @@ Formatea tu respuesta usando formato XML con la siguiente estructura:
 Asegúrate de que los ejemplos sean diversos y demuestren diferentes formas de resolver el problema. Enfócate en código claro y legible que siga las mejores prácticas de Python."""
 
             # Query LLM using LangChain
+            if not self.llm:
+                raise Exception("LLM not initialized")
+                
             messages = [
                 SystemMessage(content="Eres un instructor de programación en Python muy útil. Siempre responde usando formato XML."),
                 HumanMessage(content=prompt)
@@ -194,7 +207,7 @@ Asegúrate de que los ejemplos sean diversos y demuestren diferentes formas de r
             response = self.llm.invoke(messages)
             
             # Handle different response types (OpenAI has .content, Ollama returns string directly)
-            if hasattr(response, 'content'):
+            if hasattr(response, 'content') and response.content:
                 response_text = response.content.strip()
             else:
                 response_text = str(response).strip()
@@ -317,7 +330,7 @@ Asegúrate de que los ejemplos sean diversos y demuestren diferentes formas de r
                 "approach": "Basic implementation"
             }]
     
-    async def get_relevant_theory(self, requirement: str, examples: List[Dict[str, Any]] = None, max_results: int = 5) -> List[Dict[str, Any]]:
+    async def get_relevant_theory(self, requirement: str, examples: Optional[List[Dict[str, Any]]] = None, max_results: int = 5) -> List[Dict[str, Any]]:
         """Get relevant theoretical content from notebooks using RAG"""
         try:
             # Create a comprehensive query that includes both requirement and examples
@@ -402,6 +415,9 @@ Proporciona tu respuesta usando formato XML:
 </example>"""
 
                 # Query LLM using LangChain
+                if not self.llm:
+                    raise Exception("LLM not initialized")
+                    
                 messages = [
                     SystemMessage(content="Eres un instructor de programación en Python muy útil. Siempre responde usando formato XML y escribe todo en ESPAÑOL únicamente."),
                     HumanMessage(content=prompt)
@@ -550,6 +566,9 @@ Formatea tu respuesta usando formato XML con la siguiente estructura:
 """
 
             # Query LLM using LangChain
+            if not self.llm:
+                raise Exception("LLM not initialized")
+                
             messages = [
                 SystemMessage(content="Eres un instructor de programación en Python muy útil. Siempre responde usando formato XML."),
                 HumanMessage(content=prompt)
@@ -558,7 +577,7 @@ Formatea tu respuesta usando formato XML con la siguiente estructura:
             response = self.llm.invoke(messages)
             
             # Handle different response types (OpenAI has .content, Ollama returns string directly)
-            if hasattr(response, 'content'):
+            if hasattr(response, 'content') and response.content:
                 response_text = response.content.strip()
             else:
                 response_text = str(response).strip()
