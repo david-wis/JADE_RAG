@@ -24,6 +24,7 @@ from config import (
     CHUNK_SIZE,
     CHUNK_OVERLAP,
     MIN_CHUNK_SIZE,
+    DEBUG_MODE,
     ENABLE_RERANKING,
     RERANKING_MODEL,
     INITIAL_RETRIEVAL_COUNT,
@@ -159,6 +160,67 @@ class TextSplitter:
         
         print("=" * 50)
 
+    def _debug_chunk_analysis(self, documents: List[str]) -> None:
+        """Display chunk analysis and create histogram visualization in debug mode"""
+        print(f"\n=== CHUNKS PARA EMBEDDINGS ({len(documents)} total) ===")
+        for i, doc in enumerate(documents):
+            print(f"Chunk {i+1} (length: {len(doc)}):")
+            print(f"'{doc[:150]}{'...' if len(doc) > 150 else ''}'")
+            print("-" * 50)
+        
+        # Show histogram of chunk lengths
+        chunk_lengths = [len(doc) for doc in documents]
+        print(f"\n=== HISTOGRAMA DE LONGITUDES DE CHUNKS ===")
+        print(f"Total chunks: {len(chunk_lengths)}")
+        print(f"Longitud promedio: {sum(chunk_lengths) / len(chunk_lengths):.1f}")
+        print(f"Longitud mínima: {min(chunk_lengths)}")
+        print(f"Longitud máxima: {max(chunk_lengths)}")
+        
+        # Create histogram
+        length_counts = Counter(chunk_lengths)
+        max_count = max(length_counts.values())
+        
+        print(f"\nDistribución de longitudes:")
+        for length in sorted(length_counts.keys()):
+            count = length_counts[length]
+            bar_length = int((count / max_count) * 50)  # Scale to 50 chars max
+            bar = "█" * bar_length
+            print(f"{length:4d} chars: {bar} ({count})")
+        
+        # Create matplotlib plot
+        try:
+            
+            plt.figure(figsize=(12, 6))
+            
+            # Create histogram
+            plt.subplot(1, 2, 1)
+            plt.hist(chunk_lengths, bins=20, alpha=0.7, color='skyblue', edgecolor='black')
+            plt.axvline(sum(chunk_lengths) / len(chunk_lengths), color='red', linestyle='--', 
+                       label=f'Promedio: {sum(chunk_lengths) / len(chunk_lengths):.1f}')
+            plt.xlabel('Longitud del Chunk (caracteres)')
+            plt.ylabel('Frecuencia')
+            plt.title('Distribución de Longitudes de Chunks')
+            plt.legend()
+            plt.grid(True, alpha=0.3)
+            
+            # Create box plot
+            plt.subplot(1, 2, 2)
+            plt.boxplot(chunk_lengths, vert=True, patch_artist=True, 
+                       boxprops=dict(facecolor='lightgreen', alpha=0.7))
+            plt.ylabel('Longitud del Chunk (caracteres)')
+            plt.title('Box Plot de Longitudes de Chunks')
+            plt.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plt.savefig('chunk_lengths_analysis.png', dpi=150, bbox_inches='tight')
+            print(f"\n📊 Gráfico guardado como: chunk_lengths_analysis.png")
+            plt.show()
+            
+        except Exception as e:
+            print(f"\n⚠️  Error creando gráfico: {e}")
+        
+        print("=" * 60)
+
 
 class RAGSystem:
     def __init__(self):
@@ -181,7 +243,7 @@ class RAGSystem:
             chunk_size=CHUNK_SIZE,
             chunk_overlap=CHUNK_OVERLAP,
             min_chunk_size=MIN_CHUNK_SIZE,
-            debug=False  # Can be enabled for debugging
+            debug=DEBUG_MODE  # Controlled by environment variable
         )
 
         # Reranking configuration
@@ -261,51 +323,6 @@ class RAGSystem:
             logger.error(f"Failed to initialize RAG system: {e}")
             raise
     
-    def enable_chunk_debug(self, enabled: bool = True):
-        """Enable or disable debug mode for text splitting"""
-        self.text_splitter.debug = enabled
-        if enabled:
-            logger.info("Chunk debug mode enabled - you'll see detailed splitting information")
-        else:
-            logger.info("Chunk debug mode disabled")
-    
-    def visualize_text_splitting(self, text: str, filename: str = "test"):
-        """Visualize how a text would be split into chunks"""
-        metadata = {
-            "filename": filename,
-            # ...
-            "notebook_path": f"test/{filename}"
-        }
-        self.text_splitter.visualize_chunks(text, metadata)
-    
-    def export_chunks_to_file(self, notebook_path: str, output_file: str = None):
-        """Extract and export chunks from a notebook to a file for analysis"""
-        if output_file is None:
-            base_name = os.path.splitext(os.path.basename(notebook_path))[0]
-            output_file = f"chunks_{base_name}.txt"
-        
-        chunks = self.extract_notebook_content(notebook_path)
-        
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(f"CHUNKS ANALYSIS FOR: {notebook_path}\n")
-            f.write(f"Strategy: {self.text_splitter.strategy}\n")
-            f.write(f"Chunk size: {self.text_splitter.chunk_size}\n")
-            f.write(f"Chunk overlap: {self.text_splitter.chunk_overlap}\n")
-            f.write(f"Min chunk size: {self.text_splitter.min_chunk_size}\n")
-            f.write("=" * 80 + "\n\n")
-            
-            for i, chunk in enumerate(chunks):
-                f.write(f"CHUNK {i+1}:\n")
-                f.write(f"Filename: {chunk['metadata']['filename']}\n")
-                # ...
-                f.write(f"Length: {len(chunk['content'])} characters\n")
-                f.write("-" * 40 + "\n")
-                f.write(chunk['content'])
-                f.write("\n" + "=" * 80 + "\n\n")
-        
-        logger.info(f"Chunks exported to: {output_file}")
-        return output_file
-
     def _create_collection(self):
         """Create or get the JADE notebooks collection in Weaviate"""
         collection_name = "JadeNotebooks"
@@ -383,6 +400,7 @@ class RAGSystem:
     def rerank_documents(self, query: str, documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Rerank documents using CrossEncoder"""
         if not self.reranker or not documents:
+            logger.warning("Reranking disabled or no documents to rerank")
             return documents
         
         try:
@@ -449,65 +467,9 @@ class RAGSystem:
             logger.info("Generating embeddings...")
             documents = [chunk["content"] for chunk in all_chunks]
             
-            # Show chunks being processed for embeddings
-            print(f"\n=== CHUNKS PARA EMBEDDINGS ({len(documents)} total) ===")
-            for i, doc in enumerate(documents):
-                print(f"Chunk {i+1} (length: {len(doc)}):")
-                print(f"'{doc[:150]}{'...' if len(doc) > 150 else ''}'")
-                print("-" * 50)
-            
-            # Show histogram of chunk lengths
-            chunk_lengths = [len(doc) for doc in documents]
-            print(f"\n=== HISTOGRAMA DE LONGITUDES DE CHUNKS ===")
-            print(f"Total chunks: {len(chunk_lengths)}")
-            print(f"Longitud promedio: {sum(chunk_lengths) / len(chunk_lengths):.1f}")
-            print(f"Longitud mínima: {min(chunk_lengths)}")
-            print(f"Longitud máxima: {max(chunk_lengths)}")
-            
-            # Create histogram
-            length_counts = Counter(chunk_lengths)
-            max_count = max(length_counts.values())
-            
-            print(f"\nDistribución de longitudes:")
-            for length in sorted(length_counts.keys()):
-                count = length_counts[length]
-                bar_length = int((count / max_count) * 50)  # Scale to 50 chars max
-                bar = "█" * bar_length
-                print(f"{length:4d} chars: {bar} ({count})")
-            
-            # Create matplotlib plot
-            try:
-                
-                plt.figure(figsize=(12, 6))
-                
-                # Create histogram
-                plt.subplot(1, 2, 1)
-                plt.hist(chunk_lengths, bins=20, alpha=0.7, color='skyblue', edgecolor='black')
-                plt.axvline(sum(chunk_lengths) / len(chunk_lengths), color='red', linestyle='--', 
-                           label=f'Promedio: {sum(chunk_lengths) / len(chunk_lengths):.1f}')
-                plt.xlabel('Longitud del Chunk (caracteres)')
-                plt.ylabel('Frecuencia')
-                plt.title('Distribución de Longitudes de Chunks')
-                plt.legend()
-                plt.grid(True, alpha=0.3)
-                
-                # Create box plot
-                plt.subplot(1, 2, 2)
-                plt.boxplot(chunk_lengths, vert=True, patch_artist=True, 
-                           boxprops=dict(facecolor='lightgreen', alpha=0.7))
-                plt.ylabel('Longitud del Chunk (caracteres)')
-                plt.title('Box Plot de Longitudes de Chunks')
-                plt.grid(True, alpha=0.3)
-                
-                plt.tight_layout()
-                plt.savefig('chunk_lengths_analysis.png', dpi=150, bbox_inches='tight')
-                print(f"\n📊 Gráfico guardado como: chunk_lengths_analysis.png")
-                plt.show()
-                
-            except Exception as e:
-                print(f"\n⚠️  Error creando gráfico: {e}")
-            
-            print("=" * 60)
+            # Show chunks being processed for embeddings only in debug mode
+            if self.text_splitter.debug:
+                self.text_splitter._debug_chunk_analysis(documents)
             
             embeddings = self.embedding_model.encode(documents).tolist()
 
@@ -540,27 +502,18 @@ class RAGSystem:
             raise
 
     @traceable(name="retrieve_documents")
-    async def retrieve_documents(self, query: str, max_results: int = None) -> List[Dict[str, Any]]:
+    async def retrieve_documents(self, query: str, max_results: int) -> List[Dict[str, Any]]:
         """Retrieve relevant documents from vector database without LLM processing"""
         try:
             if not self.client:
                 raise Exception("Weaviate client not initialized")
 
-            # Determine retrieval count based on reranking settings
-            if max_results is None:
-                if self.enable_reranking:
-                    retrieval_count = self.initial_retrieval_count
-                    final_count = self.final_retrieval_count
-                else:
-                    retrieval_count = 5  # Default
-                    final_count = 5
+            if self.enable_reranking:
+                retrieval_count = max(max_results * 3, self.initial_retrieval_count)  # Retrieve more for reranking
+                final_count = max_results
             else:
-                if self.enable_reranking:
-                    retrieval_count = max(max_results * 3, self.initial_retrieval_count)  # Retrieve more for reranking
-                    final_count = max_results
-                else:
-                    retrieval_count = max_results
-                    final_count = max_results
+                retrieval_count = max_results
+                final_count = max_results
 
             # Generate embedding for the query
             query_embedding = self.embedding_model.encode([query]).tolist()[0]
@@ -582,6 +535,7 @@ class RAGSystem:
 
             # Prepare context from retrieved documents
             context_docs = []
+            i = 1
             for item in results["data"]["Get"]["JadeNotebooks"]:
                 # Calculate confidence score from certainty (0-1 scale)
                 certainty = item.get("_additional", {}).get("certainty", 0)
@@ -589,6 +543,9 @@ class RAGSystem:
 
                 # Convert certainty to percentage and round to 1 decimal place
                 confidence = round(certainty * 100, 1) if certainty else 0
+
+                logger.debug(f"First 20 characters of content {i}: {item['content'][:20]}")
+                i += 1
 
                 context_docs.append(
                     {
@@ -619,27 +576,18 @@ class RAGSystem:
             return []
 
     @traceable(name="rag_query")
-    async def query(self, question: str, max_results: int = None) -> Dict[str, Any]:
+    async def query(self, question: str, max_results: int) -> Dict[str, Any]:
         """Query the RAG system with optional reranking"""
         try:
             if not self.client:
                 raise Exception("Weaviate client not initialized")
 
-            # Determine retrieval count based on reranking settings
-            if max_results is None:
-                if self.enable_reranking:
-                    retrieval_count = self.initial_retrieval_count
-                    final_count = self.final_retrieval_count
-                else:
-                    retrieval_count = 5  # Default
-                    final_count = 5
+            if self.enable_reranking:
+                retrieval_count = max(max_results * 3, self.initial_retrieval_count)  # Retrieve more for reranking
+                final_count = max_results
             else:
-                if self.enable_reranking:
-                    retrieval_count = max(max_results * 3, self.initial_retrieval_count)  # Retrieve more for reranking
-                    final_count = max_results
-                else:
-                    retrieval_count = max_results
-                    final_count = max_results
+                retrieval_count = max_results
+                final_count = max_results
 
             # Generate embedding for the question
             question_embedding = self.embedding_model.encode([question]).tolist()[0]

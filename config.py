@@ -32,6 +32,7 @@ TEXT_SPLITTER_STRATEGY = os.getenv("TEXT_SPLITTER_STRATEGY", "cell_based")  # "c
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
 MIN_CHUNK_SIZE = int(os.getenv("MIN_CHUNK_SIZE", "100"))
+DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
 
 # Reranking Configuration
 ENABLE_RERANKING = os.getenv("ENABLE_RERANKING", "true").lower() == "true"
