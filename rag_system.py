@@ -522,12 +522,14 @@ class RAGSystem:
             return {
                 "before_rerank": before_rerank,
                 "after_rerank": after_rerank,
+                "reranked_docs": reranked_docs
             }
         except Exception as e:
             logger.error(f"Error during reranking: {e}")
             return {
                 "before_rerank": before_rerank if 'before_rerank' in locals() else [],
                 "after_rerank": [],
+                "reranked_docs": documents
             }
 
     @traceable(name="ingest_notebooks")
