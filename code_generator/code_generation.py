@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langsmith import traceable
 
 from .shared import LLMFactory, XMLParser
+from .prompt_templates import PromptTemplates, Language
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ class CodeGenerator:
     def __init__(self, llm_factory: LLMFactory):
         self.llm_factory = llm_factory
         self.xml_parser = XMLParser()
+        self.prompt_templates = PromptTemplates()
         self.llm = None
     
     async def initialize(self):
@@ -29,44 +31,26 @@ class CodeGenerator:
             raise
     
     @traceable(name="generate_initial_examples")
-    async def generate_initial_examples(self, requirement: str, num_examples: int = 3) -> List[Dict[str, Any]]:
+    async def generate_initial_examples(self, requirement: str, num_examples: int = 3, language: Language = Language.PYTHON) -> List[Dict[str, Any]]:
         """Generate initial code examples based on the requirement."""
         try:
-            prompt = f"""Eres un alumno de una materia de programación en Python. Dado el siguiente requerimiento, genera {num_examples} ejemplos de código diferentes que cumplan con este requerimiento.
-
-Requerimiento: {requirement}
-
-Para cada ejemplo, proporciona:
-1. El código Python completo
-2. Una breve explicación del enfoque utilizado
-
-IMPORTANTE: 
-- Usa la indentación correcta de Python (4 espacios)
-- Asegúrate de que el código esté bien formateado y sea legible
-- El código debe ser correcto, pero no es necesario que sea eficiente
-- Debes asumir tus conocimientos son básicos (por ejemplo, no uses clases ni lambdas).
-- El código debe ser lo más imperativo posible (evita usar funciones de Python que simplifiquen el código)
-- El código debe ser muy simple y corto.
-
-Formatea tu respuesta usando formato XML con la siguiente estructura:
-<example>
-<code>tu código python aquí</code>
-<approach>explicación del enfoque</approach>
-</example>
-
-<example>
-<code>otro código python aquí</code>
-<approach>explicación del enfoque</approach>
-</example>
-
-Asegúrate de que los ejemplos sean diversos y demuestren diferentes formas de resolver el problema. Enfócate en código claro y legible que siga las mejores prácticas de Python."""
+            # Get language-specific prompt
+            prompt = self.prompt_templates.format_template(
+                language, 
+                "code_generation", 
+                requirement=requirement, 
+                num_examples=num_examples
+            )
+            
+            # Get language-specific system message
+            system_message = self.prompt_templates.get_system_message(language, "code_generation")
 
             # Query LLM using LangChain
             if not self.llm:
                 raise Exception("LLM not initialized")
                 
             messages = [
-                SystemMessage(content="Eres un instructor de programación en Python muy útil. Siempre responde usando formato XML."),
+                SystemMessage(content=system_message),
                 HumanMessage(content=prompt)
             ]
             

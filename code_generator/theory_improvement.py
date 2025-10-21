@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langsmith import traceable
 
 from .shared import LLMFactory, XMLParser
+from .prompt_templates import PromptTemplates, Language
 from config import TEMPERATURE_THEORY_CORRECTION
 
 logger = logging.getLogger(__name__)
@@ -18,8 +19,9 @@ class TheoryImprover:
     def __init__(self, llm_factory: LLMFactory):
         self.llm_factory = llm_factory
         self.xml_parser = XMLParser()
+        self.prompt_templates = PromptTemplates()
     
-    async def get_relevant_theory(self, rag_system, requirement: str, examples: Optional[List[Dict[str, Any]]] = None, max_results: int = 5, max_class_number: Optional[int] = None) -> List[Dict[str, Any]]:
+    async def get_relevant_theory(self, rag_system, requirement: str, examples: Optional[List[Dict[str, Any]]] = None, max_results: int = 5, max_class_number: Optional[int] = None, dataset: str = "python") -> List[Dict[str, Any]]:
         """Get relevant theoretical content from notebooks using RAG."""
         try:
             # Create a comprehensive query that includes both requirement and examples
@@ -37,7 +39,7 @@ class TheoryImprover:
             combined_query = " ".join(query_parts)
             
             # Retrieve relevant documents from vector database (no LLM processing)
-            theory_sources = await rag_system.retrieve_documents(combined_query, max_results=max_results, max_class_number=max_class_number)
+            theory_sources = await rag_system.retrieve_documents(combined_query, max_results=max_results, max_class_number=max_class_number, dataset=dataset)
             
             return theory_sources
                 
@@ -48,7 +50,8 @@ class TheoryImprover:
     @traceable(name="improve_examples_with_theory")
     async def improve_examples_with_theory(self, examples: List[Dict[str, Any]], 
                                          requirement: str, 
-                                         theory_sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+                                         theory_sources: List[Dict[str, Any]],
+                                         language: Language = Language.PYTHON) -> List[Dict[str, Any]]:
         """Improve examples based on theoretical best practices from notebooks."""
         try:
             if not theory_sources:
@@ -69,58 +72,25 @@ class TheoryImprover:
             improved_examples = []
             
             for example in examples:
-                prompt = f"""Eres un instructor de programación en Python. Tengo un ejemplo de código que cumple con un requerimiento, y quiero que lo adaptes basándote en los materiales del curso.
-
-El objetivo es crear otro programa EQUIVALENTE al original, pero siguiendo las recomendaciones de la teoría.
-
-Requerimiento Original: {requirement}
-
-Teoría del Curso y Mejores Prácticas:
-{theory_context}
-
-Ejemplo Actual:
-Descripción: {example['description']}
-Código: {example['code']}
-Enfoque: {example['approach']}
-
-Por favor arma un nuevo ejemplo:
-1. Siguiendo las mejores prácticas mencionadas en la teoría del curso
-2. Usando las funciones, métodos o enfoques recomendados de la teoría (prioriza hacerlo con funciones, metodos o enfoques del material provisto por más que cambie el código original)
-3. Respetando el requerimiento original ya que el material solo define el estilo y no la consigna
-4. Manteniendo inputs, outputs y comportamiento del programa original.
-5. Si el requerimiento no indica dar ejemplos de ejecucion o comentarios, no los agregues
-
-IMPORTANTE:
-- Usa la indentación correcta de Python (4 espacios)
-- Asegúrate de que el código esté bien formateado y sea legible
-- El código debe ser correcto, pero no es necesario que sea eficiente
-- Debes asumir tus conocimientos son básicos (por ejemplo, no uses clases ni lambdas).
-- El código debe ser lo más imperativo posible (evita usar funciones de Python que simplifiquen el código)
-- El código debe ser muy simple y corto.
-
-Ejemplo:
-Supongamos que el requerimiento es "Crear una función que valide la existencia de un archivo txt" y hay un ejemplo de la teoria sobre como leer un csv y validar que tenga exactamente 10 filas.
-- Si hay una explicación teoríca relevante (no la consigna de un ejercicio), deberías tenerla en cuenta.
-- Deberías usar el ejemplo de la teoria para crear un nuevo ejemplo que valide la existencia de un archivo txt (por ejemplo usando open si el material lo indica).
-- No deberías modificar el código para que trabaje con csvs.
-- No deberías tener en cuenta la validación de cantidad de filas.
-
-Antes de dar tu respuesta quiero que pienses si el ejemplo que estas proponiendo es verdaderamente equivalente al original y lo corrijas si no lo es.
-Quiero que indiques por que son equivalentes dentro del apartado de approach.
-
-Proporciona tu respuesta usando formato XML:
-<example>
-<code>código python mejorado aquí</code>
-<approach>explicación de las mejoras y por que el código es equivalente al original</approach>
-<improvements>lista de mejoras</improvements>
-<theory_alignment>cómo se alinea con la teoría del curso</theory_alignment>
-</example>"""
+                # Get language-specific prompt
+                prompt = self.prompt_templates.format_template(
+                    language,
+                    "theory_improvement",
+                    requirement=requirement,
+                    theory_context=theory_context,
+                    description=example['description'],
+                    code=example['code'],
+                    approach=example['approach']
+                )
+                
+                # Get language-specific system message
+                system_message = self.prompt_templates.get_system_message(language, "theory_improvement")
 
                 # Create LLM instance with lower temperature for theory-based correction
                 theory_llm = self.llm_factory.create_llm(temperature=TEMPERATURE_THEORY_CORRECTION)
                     
                 messages = [
-                    SystemMessage(content="Eres un instructor de programación en Python muy útil. Siempre responde usando formato XML y escribe todo en ESPAÑOL únicamente."),
+                    SystemMessage(content=system_message),
                     HumanMessage(content=prompt)
                 ]
                 

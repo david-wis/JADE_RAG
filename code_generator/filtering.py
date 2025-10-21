@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langsmith import traceable
 
 from .shared import LLMFactory, XMLParser
+from .prompt_templates import PromptTemplates, Language
 from config import TEMPERATURE_FILTERING
 
 logger = logging.getLogger(__name__)
@@ -18,11 +19,13 @@ class TheoryFilter:
     def __init__(self, llm_factory: LLMFactory):
         self.llm_factory = llm_factory
         self.xml_parser = XMLParser()
+        self.prompt_templates = PromptTemplates()
     
     @traceable(name="filter_theory_specific_elements")
     async def filter_theory_specific_elements(self, examples: List[Dict[str, Any]], 
                                             requirement: str, 
-                                            theory_sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+                                            theory_sources: List[Dict[str, Any]],
+                                            language: Language = Language.PYTHON) -> List[Dict[str, Any]]:
         """Filter out theory-specific elements that are not relevant to the original requirement."""
         try:
             if not theory_sources:
@@ -46,76 +49,28 @@ class TheoryFilter:
                 # Get original code if available (from the initial examples before theory improvement)
                 original_code = example.get('original_code', 'No original code available')
                 
-                prompt = f"""Eres un instructor de programación en Python experto en análisis de código. Tu tarea es revisar un ejemplo de código que fue mejorado basándose en material teórico y determinar si contiene elementos muy específicos del material que no son relevantes para el requerimiento original.
-
-Requerimiento Original: {requirement}
-
-Material Teórico Utilizado:
-{theory_context}
-
-COMPARACIÓN DE CÓDIGOS:
-
-Código Original (antes de mejoras con teoría):
-```python
-{original_code}
-```
-
-Código Mejorado (después de aplicar teoría):
-```python
-{example.get('code', 'N/A')}
-```
-
-Información del Ejemplo:
-Descripción: {example.get('description', 'N/A')}
-Enfoque Original: {example.get('approach', 'N/A')}
-Mejoras Aplicadas: {example.get('improvements', 'N/A')}
-Alineación con Teoría: {example.get('theory_alignment', 'N/A')}
-
-INSTRUCCIONES:
-1. Compara el código original con el código mejorado para identificar qué elementos se agregaron del material teórico
-2. Analiza si los elementos agregados son relevantes para cumplir el requerimiento original
-3. Identifica si se agregaron funcionalidades, validaciones o lógica que van más allá de lo que pide la consigna
-4. Si encuentras elementos irrelevantes o que eran parte de un ejercicio del material pero no del requerimiento, proporciona una versión filtrada del código
-5. Si el código mejorado está bien y solo contiene elementos relevantes, devuelve el código mejorado sin cambios
-
-CRITERIOS PARA FILTRAR:
-- Validaciones específicas del material que no están en el requerimiento
-- Funcionalidades adicionales que no se pidieron
-- Lógica compleja que no es necesaria para la consigna básica
-- Elementos de ejemplo del material que se incorporaron innecesariamente
-- Controles de flujo del material que si bien aportan valor, no están explicitos en el requerimiento
-
-CRITERIOS PARA MANTENER:
-- Estructura y estilo recomendado por la teoría
-- Funciones y métodos apropiados mencionados en el material
-- Mejores prácticas de programación
-- Código que cumple exactamente con el requerimiento
-
-IMPORTANTE:
-- En la mayoría de los casos NO deberías modificar el código mejorado
-- Solo filtra cuando hay elementos claramente irrelevantes agregados del material teórico
-- Mantén la funcionalidad del código original intacta
-- Preserva inputs, outputs y comportamiento del programa original
-- El objetivo es mantener solo las mejoras relevantes del material teórico
-
-Proporciona tu respuesta usando formato XML:
-<analysis>
-<has_irrelevant_elements>true/false</has_irrelevant_elements>
-<irrelevant_elements>descripción de elementos irrelevantes encontrados (si los hay)</irrelevant_elements>
-<filtering_justification>justificación de por qué se filtraron o no se filtraron elementos</filtering_justification>
-</analysis>
-
-<filtered_example>
-<code>código filtrado (o original si no hay cambios)</code>
-<approach>explicación actualizada del enfoque</approach>
-<filtering_summary>resumen de los cambios realizados (si los hubo)</filtering_summary>
-</filtered_example>"""
+                # Get language-specific prompt
+                prompt = self.prompt_templates.format_template(
+                    language,
+                    "filtering",
+                    requirement=requirement,
+                    theory_context=theory_context,
+                    original_code=original_code,
+                    improved_code=example.get('code', 'N/A'),
+                    description=example.get('description', 'N/A'),
+                    approach=example.get('approach', 'N/A'),
+                    improvements=example.get('improvements', 'N/A'),
+                    theory_alignment=example.get('theory_alignment', 'N/A')
+                )
+                
+                # Get language-specific system message
+                system_message = self.prompt_templates.get_system_message(language, "filtering")
 
                 # Create LLM instance with low temperature for precise filtering
                 filter_llm = self.llm_factory.create_llm(temperature=TEMPERATURE_FILTERING)
                     
                 messages = [
-                    SystemMessage(content="Eres un instructor de programación en Python muy útil. Siempre responde usando formato XML y escribe todo en ESPAÑOL únicamente."),
+                    SystemMessage(content=system_message),
                     HumanMessage(content=prompt)
                 ]
                 

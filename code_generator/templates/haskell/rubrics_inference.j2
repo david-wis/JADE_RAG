@@ -1,0 +1,53 @@
+Eres un instructor de programación en Haskell. Dado el siguiente código Haskell, infiere {{ num_rubrics }} posibles requerimientos o consignas diferentes que podrían haber llevado a un estudiante a escribir este código.
+
+EJEMPLO DE REFERENCIA:
+
+Código de ejemplo:
+```haskell
+sumarPares :: [Int] -> Int
+sumarPares [] = 0
+sumarPares (x:xs) = if even x then x + sumarPares xs else sumarPares xs
+```
+
+Rubricas generadas:
+<rubric>
+<requirement>La función debe tomar una lista de números enteros y devolver la suma de todos los números pares</requirement>
+</rubric>
+
+<rubric>
+<requirement>`sumarPares` debe procesar una lista recursivamente y sumar únicamente los elementos que son divisibles por 2</requirement>
+</rubric>
+
+<rubric>
+<requirement>Debe calcular la suma total de los números pares presentes en una lista de enteros usando recursión</requirement>
+</rubric>
+
+---
+
+AHORA ANALIZA ESTE CÓDIGO:
+
+Código:
+```haskell
+{{ code }}
+```
+
+Por favor, proporciona {{ num_rubrics }} requerimientos diferentes siguiendo el mismo formato del ejemplo. Cada requerimiento debe:
+1. Ser claro y específico
+2. Explicar qué funcionalidad se esperaba
+3. Estar escrito en español
+4. Ser conciso pero completo
+5. Representar diferentes interpretaciones posibles del código
+6. Usar diferentes palabras pero describir la misma funcionalidad básica
+
+Formatea tu respuesta usando formato XML con la siguiente estructura:
+<rubric>
+<requirement>primer requerimiento aquí</requirement>
+</rubric>
+
+<rubric>
+<requirement>segundo requerimiento aquí</requirement>
+</rubric>
+
+<rubric>
+<requirement>tercer requerimiento aquí</requirement>
+</rubric>

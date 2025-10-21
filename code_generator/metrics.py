@@ -14,6 +14,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
 from .shared import LLMFactory, XMLParser
+from .prompt_templates import PromptTemplates, Language
 from config import NUM_GENERATED_RUBRICS
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,7 @@ class MetricsCalculator:
     def __init__(self, llm_factory: LLMFactory):
         self.llm_factory = llm_factory
         self.xml_parser = XMLParser()
+        self.prompt_templates = PromptTemplates()
         self.context_precision_metric = None
         self.ragas_llm = None
     
@@ -144,73 +146,25 @@ class MetricsCalculator:
         return enhanced_examples
     
     @traceable(name="infer_requirements_from_code")
-    async def infer_requirements_from_code(self, code: str) -> List[str]:
+    async def infer_requirements_from_code(self, code: str, language: Language = Language.PYTHON) -> List[str]:
         """Infer multiple possible requirements that could have generated the given code."""
         try:
-            prompt = f"""Eres un instructor de programación en Python. Dado el siguiente código Python, infiere {NUM_GENERATED_RUBRICS} posibles requerimientos o consignas diferentes que podrían haber llevado a un estudiante a escribir este código.
-
-EJEMPLO DE REFERENCIA:
-
-Código de ejemplo:
-```python
-def sumar_pares(lista):
-    suma = 0
-    for numero in lista:
-        if numero % 2 == 0:
-            suma += numero
-    return suma
-```
-
-Rubricas generadas:
-<rubric>
-<requirement>La función debe tomar una lista de números y devolver la suma de todos los números pares</requirement>
-</rubric>
-
-<rubric>
-<requirement>`sumar_pares` debe recorrer una lista y sumar únicamente los elementos que son divisibles por 2</requirement>
-</rubric>
-
-<rubric>
-<requirement>Debe calcular la suma total de los números pares presentes en una lista de enteros</requirement>
-</rubric>
-
----
-
-AHORA ANALIZA ESTE CÓDIGO:
-
-Código:
-```python
-{code}
-```
-
-Por favor, proporciona {NUM_GENERATED_RUBRICS} requerimientos diferentes siguiendo el mismo formato del ejemplo. Cada requerimiento debe:
-1. Ser claro y específico
-2. Explicar qué funcionalidad se esperaba
-3. Estar escrito en español
-4. Ser conciso pero completo
-5. Representar diferentes interpretaciones posibles del código
-6. Usar diferentes palabras pero describir la misma funcionalidad básica
-
-Formatea tu respuesta usando formato XML con la siguiente estructura:
-<rubric>
-<requirement>primer requerimiento aquí</requirement>
-</rubric>
-
-<rubric>
-<requirement>segundo requerimiento aquí</requirement>
-</rubric>
-
-<rubric>
-<requirement>tercer requerimiento aquí</requirement>
-</rubric>
-
-"""
+            # Get language-specific prompt
+            prompt = self.prompt_templates.format_template(
+                language,
+                "rubrics_inference",
+                code=code,
+                num_rubrics=NUM_GENERATED_RUBRICS
+            )
+            
+            # Get language-specific system message
+            system_message = self.prompt_templates.get_system_message(language, "rubrics_inference")
 
             # Create LLM instance for inference
             inference_llm = self.llm_factory.create_llm()
                 
             messages = [
-                SystemMessage(content="Eres un instructor de programación en Python muy útil. Siempre responde usando formato XML."),
+                SystemMessage(content=system_message),
                 HumanMessage(content=prompt)
             ]
             
@@ -232,7 +186,7 @@ Formatea tu respuesta usando formato XML con la siguiente estructura:
             logger.error(f"Error inferring requirements from code: {e}")
             return [f"Error al inferir el requerimiento {i+1}" for i in range(NUM_GENERATED_RUBRICS)]
     
-    async def calculate_answer_relevancy(self, requirement: str, examples: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def calculate_answer_relevancy(self, requirement: str, examples: List[Dict[str, Any]], language: Language = Language.PYTHON) -> List[Dict[str, Any]]:
         """Calculate answer relevancy scores for each example using the custom metric."""
         try:
             enhanced_examples = []
@@ -247,7 +201,7 @@ Formatea tu respuesta usando formato XML con la siguiente estructura:
                     continue
                 
                 # Infer multiple requirements from the generated code
-                generated_rubrics = await self.infer_requirements_from_code(example["code"])
+                generated_rubrics = await self.infer_requirements_from_code(example["code"], language)
                 
                 # Calculate answer relevancy score using the custom metric with the formula
                 relevancy_score = answer_relevancy_metric(
