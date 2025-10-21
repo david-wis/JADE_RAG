@@ -26,6 +26,8 @@ SERVER_PORT = int(os.getenv("SERVER_PORT", "8001"))
 
 # Notebooks Configuration
 NOTEBOOKS_DIR = os.getenv("NOTEBOOKS_DIR", "/app/notebooks")
+PYTHON_NOTEBOOKS_DIR = os.getenv("PYTHON_NOTEBOOKS_DIR", "./Clases")
+HASKELL_NOTEBOOKS_DIR = os.getenv("HASKELL_NOTEBOOKS_DIR", "./learnyouahaskell")
 
 # Text Splitter Configuration (using LangChain RecursiveCharacterTextSplitter)
 TEXT_SPLITTER_STRATEGY = os.getenv("TEXT_SPLITTER_STRATEGY", "cell_based")  # "cell_based" or "langchain"

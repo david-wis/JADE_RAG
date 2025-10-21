@@ -17,6 +17,8 @@ from config import (
     OLLAMA_PORT,
     MODEL_NAME,
     NOTEBOOKS_DIR,
+    PYTHON_NOTEBOOKS_DIR,
+    HASKELL_NOTEBOOKS_DIR,
     AI_PROVIDER,
     OPENAI_API_KEY,
     OPENAI_MODEL,
@@ -102,11 +104,12 @@ class TextSplitter:
                 chunk_overlap=chunk_overlap,
                 length_function=len,
                 separators=[
-                    "\n# ",        
+                    # "\n# ",        # Leads to ambiguity with python comments
                     "\n## ",       
                     "\n### ",      
-                    "```python",   # Check if metrics improve with this
-                    "```",         # Check if metrics improve with this
+                    "```python",   # Python code blocks
+                    "```haskell",  # Haskell code blocks
+                    "```",         # Generic code block endings
                     "\n\n",
                     "\n",
                     ". ",
@@ -391,9 +394,9 @@ class RAGSystem:
         """Get LLM instance configured for precise theory-based correction (lower temperature)"""
         return self._create_llm_with_temperature(self.temperature_theory_correction)
     
-    def _create_collection(self):
-        """Create or get the JADE notebooks collection in Weaviate"""
-        collection_name = "JadeNotebooks"
+    def _create_collection(self, dataset: str = "python"):
+        """Create or get the notebooks collection in Weaviate for a specific dataset"""
+        collection_name = f"JadeNotebooks_{dataset.title()}"
         
         # Check if collection exists
         if self.client.schema.exists(collection_name):
@@ -403,7 +406,7 @@ class RAGSystem:
         # Create collection schema
         collection_schema = {
             "class": collection_name,
-            "description": "JADE course notebook content",
+            "description": f"JADE {dataset} course notebook content",
             "vectorizer": "none",  # We'll provide our own embeddings
             "properties": [
                 {
@@ -426,26 +429,39 @@ class RAGSystem:
                     "dataType": ["int"],
                     "description": "The class number extracted from the notebook filename",
                 },
+                {
+                    "name": "dataset",
+                    "dataType": ["string"],
+                    "description": "The dataset type (python or haskell)",
+                },
             ],
         }
 
         self.client.schema.create_class(collection_schema)
         logger.info(f"Created collection {collection_name}")
 
-    def extract_notebook_content(self, notebook_path: str) -> List[Dict[str, Any]]:
+    def extract_notebook_content(self, notebook_path: str, dataset: str = "python") -> List[Dict[str, Any]]:
         """Extract content from a Jupyter notebook as a single unit and split it consistently"""
         try:
             with open(notebook_path, "r", encoding="utf-8") as f:
                 notebook = nbformat.read(f, as_version=4)
 
-            # Combine all content into a single text
+            # Combine all content into a single text with proper formatting
             combined_content = []
             filename = os.path.basename(notebook_path)
 
             for cell in notebook.cells:
                 cell_text = cell.source.strip()
                 if cell_text:
-                    combined_content.append(cell_text)
+                    # Add language-specific code block markers for code cells
+                    if cell.cell_type == "code":
+                        # Determine the language based on dataset
+                        language = "python" if dataset == "python" else "haskell"
+                        formatted_cell = f"```{language}\n{cell_text}\n```"
+                        combined_content.append(formatted_cell)
+                    else:
+                        # For markdown cells, just add the text
+                        combined_content.append(cell_text)
 
             if not combined_content:
                 return []
@@ -459,11 +475,36 @@ class RAGSystem:
                 "filename": filename,
                 "notebook_path": notebook_path,
                 "total_cells": len(notebook.cells),
-                "class_number": class_number
+                "class_number": class_number,
+                "dataset": dataset
             }
             
             # Use text splitter to split the combined content
             chunks = self.text_splitter.split_text(full_content, metadata)
+
+            # Debug: Write chunks to file if debug mode is enabled
+            if self.text_splitter.debug:
+                debug_filename = f"debug_chunks_{dataset}_{filename.replace('.ipynb', '')}.txt"
+                debug_path = os.path.join("debug_output", debug_filename)
+                os.makedirs("debug_output", exist_ok=True)
+                
+                with open(debug_path, 'w', encoding='utf-8') as f:
+                    f.write(f"=== DEBUG: Chunks for {filename} ({dataset} dataset) ===\n")
+                    f.write(f"Strategy: {self.text_splitter.strategy}\n")
+                    f.write(f"Total chunks: {len(chunks)}\n")
+                    f.write(f"Chunk size limit: {self.text_splitter.chunk_size}\n")
+                    f.write(f"Chunk overlap: {self.text_splitter.chunk_overlap}\n")
+                    f.write(f"Min chunk size: {self.text_splitter.min_chunk_size}\n")
+                    f.write("=" * 80 + "\n\n")
+                    
+                    for i, chunk in enumerate(chunks):
+                        f.write(f"--- CHUNK {i+1} ---\n")
+                        f.write(f"Length: {len(chunk['content'])} characters\n")
+                        f.write(f"Metadata: {chunk['metadata']}\n")
+                        f.write(f"Content:\n{chunk['content']}\n")
+                        f.write("-" * 80 + "\n\n")
+                
+                logger.info(f"Debug chunks written to: {debug_path}")
 
             logger.info(f"Extracted {len(chunks)} chunks from {filename} using {self.text_splitter.strategy} strategy")
             return chunks
@@ -533,12 +574,16 @@ class RAGSystem:
             }
 
     @traceable(name="ingest_notebooks")
-    async def ingest_notebooks(self) -> Dict[str, Any]:
-        """Ingest all notebooks from the Clases directory"""
+    async def ingest_notebooks(self, dataset: str = "python") -> Dict[str, Any]:
+        """Ingest all notebooks from the specified dataset directory"""
         try:
-            notebooks_dir = NOTEBOOKS_DIR
-            if not os.path.exists(notebooks_dir):
-                notebooks_dir = "./Clases"
+            # Determine the notebooks directory based on dataset
+            if dataset == "python":
+                notebooks_dir = PYTHON_NOTEBOOKS_DIR
+            elif dataset == "haskell":
+                notebooks_dir = HASKELL_NOTEBOOKS_DIR
+            else:
+                raise ValueError(f"Unsupported dataset: {dataset}. Must be 'python' or 'haskell'")
 
             if not os.path.exists(notebooks_dir):
                 raise FileNotFoundError(
@@ -550,22 +595,23 @@ class RAGSystem:
                 f for f in os.listdir(notebooks_dir) if f.endswith(".ipynb")
             ]
 
-            logger.info(f"Found {len(notebook_files)} notebook files")
+            logger.info(f"Found {len(notebook_files)} notebook files in {dataset} dataset")
 
             for notebook_file in notebook_files:
                 notebook_path = os.path.join(notebooks_dir, notebook_file)
-                chunks = self.extract_notebook_content(notebook_path)
+                chunks = self.extract_notebook_content(notebook_path, dataset)
                 all_chunks.extend(chunks)
                 logger.info(f"Processed {notebook_file}: {len(chunks)} chunks")
 
             if not all_chunks:
-                logger.warning("No content found in notebooks")
-                return {"count": 0, "message": "No content found"}
+                logger.warning(f"No content found in {dataset} notebooks")
+                return {"count": 0, "message": f"No content found in {dataset} dataset"}
 
-            # Clear existing collection
+            # Clear existing collection for this dataset
+            collection_name = f"JadeNotebooks_{dataset.title()}"
             try:
-                self.client.schema.delete_class("JadeNotebooks")
-                self._create_collection()
+                self.client.schema.delete_class(collection_name)
+                self._create_collection(dataset)
             except:
                 pass
 
@@ -589,30 +635,67 @@ class RAGSystem:
                         "filename": chunk["metadata"]["filename"],
                         "notebook_path": chunk["metadata"]["notebook_path"],
                         "class_number": chunk["metadata"]["class_number"],
+                        "dataset": chunk["metadata"]["dataset"],
                     }
 
                     batch.add_data_object(
                         data_object=properties,
-                        class_name="JadeNotebooks",
+                        class_name=collection_name,
                         vector=embeddings[i],
                     )
 
-            logger.info(f"Successfully ingested {len(all_chunks)} chunks")
+            # Debug: Write summary of all chunks if debug mode is enabled
+            if self.text_splitter.debug:
+                summary_filename = f"debug_summary_{dataset}_all_chunks.txt"
+                summary_path = os.path.join("debug_output", summary_filename)
+                os.makedirs("debug_output", exist_ok=True)
+                
+                with open(summary_path, 'w', encoding='utf-8') as f:
+                    f.write(f"=== DEBUG: Summary for {dataset} dataset ===\n")
+                    f.write(f"Total notebooks processed: {len(notebook_files)}\n")
+                    f.write(f"Total chunks generated: {len(all_chunks)}\n")
+                    f.write(f"Strategy: {self.text_splitter.strategy}\n")
+                    f.write(f"Chunk size limit: {self.text_splitter.chunk_size}\n")
+                    f.write(f"Chunk overlap: {self.text_splitter.chunk_overlap}\n")
+                    f.write(f"Min chunk size: {self.text_splitter.min_chunk_size}\n")
+                    f.write("=" * 80 + "\n\n")
+                    
+                    # Group chunks by notebook
+                    chunks_by_notebook = {}
+                    for chunk in all_chunks:
+                        filename = chunk['metadata']['filename']
+                        if filename not in chunks_by_notebook:
+                            chunks_by_notebook[filename] = []
+                        chunks_by_notebook[filename].append(chunk)
+                    
+                    for filename, notebook_chunks in chunks_by_notebook.items():
+                        f.write(f"--- NOTEBOOK: {filename} ---\n")
+                        f.write(f"Chunks: {len(notebook_chunks)}\n")
+                        for i, chunk in enumerate(notebook_chunks):
+                            f.write(f"  Chunk {i+1}: {len(chunk['content'])} chars\n")
+                        f.write("\n")
+                
+                logger.info(f"Debug summary written to: {summary_path}")
+
+            logger.info(f"Successfully ingested {len(all_chunks)} chunks for {dataset} dataset")
             return {
                 "count": len(all_chunks),
-                "message": "Successfully ingested notebooks",
+                "message": f"Successfully ingested {dataset} notebooks",
+                "dataset": dataset
             }
 
         except Exception as e:
-            logger.error(f"Error ingesting notebooks: {e}")
+            logger.error(f"Error ingesting {dataset} notebooks: {e}")
             raise
 
     @traceable(name="retrieve_documents")
-    async def retrieve_documents(self, query: str, max_results: int, max_class_number: Optional[int] = None) -> List[Dict[str, Any]]:
+    async def retrieve_documents(self, query: str, max_results: int, dataset: str = "python", max_class_number: Optional[int] = None) -> List[Dict[str, Any]]:
         """Retrieve relevant documents from vector database without LLM processing"""
         try:
             if not self.client:
                 raise Exception("Weaviate client not initialized")
+
+            collection_name = f"JadeNotebooks_{dataset.title()}"
 
             if self.enable_reranking:
                 retrieval_count = max(max_results * 3, self.initial_retrieval_count)  # Retrieve more for reranking
@@ -627,8 +710,8 @@ class RAGSystem:
             # Build the query with optional class number filtering
             query_builder = (
                 self.client.query.get(
-                    "JadeNotebooks",
-                    ["content", "filename", "notebook_path", "class_number"],
+                    collection_name,
+                    ["content", "filename", "notebook_path", "class_number", "dataset"],
                 )
                 .with_near_vector({"vector": query_embedding})
                 .with_limit(retrieval_count)
@@ -645,13 +728,13 @@ class RAGSystem:
             
             results = query_builder.do()
 
-            if not results.get("data", {}).get("Get", {}).get("JadeNotebooks"):
+            if not results.get("data", {}).get("Get", {}).get(collection_name):
                 return []
 
             # Prepare context from retrieved documents
             context_docs = []
             i = 1
-            for item in results["data"]["Get"]["JadeNotebooks"]:
+            for item in results["data"]["Get"][collection_name]:
                 # Calculate confidence score from certainty (0-1 scale)
                 certainty = item.get("_additional", {}).get("certainty", 0)
                 distance = item.get("_additional", {}).get("distance", 1)
@@ -672,6 +755,7 @@ class RAGSystem:
                             "filename": item["filename"],
                             "notebook_path": item["notebook_path"],
                             "class_number": item["class_number"],
+                            "dataset": item.get("dataset", dataset),
                         },
                     }
                 )
@@ -691,11 +775,13 @@ class RAGSystem:
             return []
 
     @traceable(name="rag_query")
-    async def query(self, question: str, max_results: int, max_class_number: Optional[int] = None) -> Dict[str, Any]:
+    async def query(self, question: str, max_results: int, dataset: str = "python", max_class_number: Optional[int] = None) -> Dict[str, Any]:
         """Query the RAG system with optional reranking"""
         try:
             if not self.client:
                 raise Exception("Weaviate client not initialized")
+
+            collection_name = f"JadeNotebooks_{dataset.title()}"
 
             if self.enable_reranking:
                 retrieval_count = max(max_results * 3, self.initial_retrieval_count)  # Retrieve more for reranking
@@ -710,8 +796,8 @@ class RAGSystem:
             # Build the query with optional class number filtering
             query_builder = (
                 self.client.query.get(
-                    "JadeNotebooks",
-                    ["content", "filename", "notebook_path", "class_number"],
+                    collection_name,
+                    ["content", "filename", "notebook_path", "class_number", "dataset"],
                 )
                 .with_near_vector({"vector": question_embedding})
                 .with_limit(retrieval_count)
@@ -728,16 +814,16 @@ class RAGSystem:
             
             results = query_builder.do()
 
-            if not results.get("data", {}).get("Get", {}).get("JadeNotebooks"):
+            if not results.get("data", {}).get("Get", {}).get(collection_name):
                 return {
-                    "answer": "No pude encontrar información relevante en los materiales del curso.",
+                    "answer": f"No pude encontrar información relevante en los materiales del curso de {dataset}.",
                     "sources": [],
                     "question": question,
                 }
 
             # Prepare context from retrieved documents
             context_docs = []
-            for item in results["data"]["Get"]["JadeNotebooks"]:
+            for item in results["data"]["Get"][collection_name]:
                 # Calculate confidence score from certainty (0-1 scale)
                 certainty = item.get("_additional", {}).get("certainty", 0)
                 distance = item.get("_additional", {}).get("distance", 1)
@@ -755,6 +841,7 @@ class RAGSystem:
                             "filename": item["filename"],
                             "notebook_path": item["notebook_path"],
                             "class_number": item["class_number"],
+                            "dataset": item.get("dataset", dataset),
                         },
                     }
                 )
@@ -770,17 +857,27 @@ class RAGSystem:
             # Create context for the LLM
             context = "\n\n".join([doc["content"] for doc in context_docs])
 
-            # Generate prompt
-            prompt = f"""Basándote en los siguientes materiales del curso, por favor responde la pregunta: {question}
+            # Generate prompt based on dataset
+            if dataset == "haskell":
+                prompt = f"""Basándote en los siguientes materiales del curso de Haskell, por favor responde la pregunta: {question}
 
-Materiales del Curso:
+Materiales del Curso de Haskell:
 {context}
 
-Por favor proporciona una respuesta clara y útil basada en el contenido del curso. Si la información no es suficiente, por favor indícalo."""
+Por favor proporciona una respuesta clara y útil basada en el contenido del curso de Haskell. Si la información no es suficiente, por favor indícalo."""
+                system_message = "Eres un asistente útil que responde preguntas basándose en los materiales del curso de Haskell."
+            else:
+                prompt = f"""Basándote en los siguientes materiales del curso de Python, por favor responde la pregunta: {question}
+
+Materiales del Curso de Python:
+{context}
+
+Por favor proporciona una respuesta clara y útil basada en el contenido del curso de Python. Si la información no es suficiente, por favor indícalo."""
+                system_message = "Eres un asistente útil que responde preguntas basándose en los materiales del curso de Python."
 
             # Query LLM using LangChain
             messages = [
-                SystemMessage(content="Eres un asistente útil que responde preguntas basándose en los materiales del curso."),
+                SystemMessage(content=system_message),
                 HumanMessage(content=prompt)
             ]
             

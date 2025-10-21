@@ -12,12 +12,20 @@
             margin: 0 auto;
             padding: 20px;
             background-color: #f5f5f5;
+            transition: background-color 0.3s ease;
+        }
+        body.haskell-theme {
+            background-color: #f3e5f5;
         }
         .container {
             background: white;
             border-radius: 10px;
             padding: 30px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: box-shadow 0.3s ease;
+        }
+        body.haskell-theme .container {
+            box-shadow: 0 2px 10px rgba(156, 39, 176, 0.2);
         }
         h1 {
             color: #333;
@@ -71,6 +79,7 @@
             font-size: 16px;
             cursor: pointer;
             margin-right: 10px;
+            transition: background-color 0.3s ease;
         }
         button:hover {
             background: #0056b3;
@@ -78,6 +87,12 @@
         button:disabled {
             background: #ccc;
             cursor: not-allowed;
+        }
+        body.haskell-theme button {
+            background: #9c27b0;
+        }
+        body.haskell-theme button:hover {
+            background: #7b1fa2;
         }
         .loading {
             display: none;
@@ -307,6 +322,62 @@
             padding: 40px;
             color: #666;
         }
+        .dataset-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            gap: 15px;
+        }
+        .dataset-toggle label {
+            font-weight: 600;
+            color: #555;
+            margin: 0;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #007bff;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #9c27b0;
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        .dataset-label {
+            font-size: 14px;
+            color: #666;
+            margin: 0;
+        }
     </style>
 </head>
 <body>
@@ -316,6 +387,16 @@
         <div class="nav-links">
             <a href="/ui">📚 Q&A System</a>
             <a href="/code-gen">💻 Code Generator</a>
+        </div>
+        
+        <div class="dataset-toggle">
+            <label>🐍 Python</label>
+            <label class="toggle-switch">
+                <input type="checkbox" id="datasetToggle">
+                <span class="slider"></span>
+            </label>
+            <label>🔷 Haskell</label>
+            <p class="dataset-label" id="datasetLabel">Python Dataset</p>
         </div>
         
         <div class="input-group">
@@ -356,6 +437,25 @@
     </div>
 
     <script>
+        // Dataset management
+        let currentDataset = 'python';
+        
+        function updateDataset() {
+            const toggle = document.getElementById('datasetToggle');
+            const label = document.getElementById('datasetLabel');
+            const body = document.body;
+            
+            if (toggle.checked) {
+                currentDataset = 'haskell';
+                label.textContent = 'Haskell Dataset';
+                body.classList.add('haskell-theme');
+            } else {
+                currentDataset = 'python';
+                label.textContent = 'Python Dataset';
+                body.classList.remove('haskell-theme');
+            }
+        }
+        
         async function askQuestion() {
             const question = document.getElementById('question').value.trim();
             if (!question) {
@@ -375,7 +475,8 @@
             try {
                 const requestBody = {
                     question: question,
-                    max_results: 5
+                    max_results: 5,
+                    dataset: currentDataset
                 };
                 
                 if (maxClassNumber !== null) {
@@ -411,7 +512,7 @@
             result.innerHTML = '';
             
             try {
-                const response = await fetch('/classes', {
+                const response = await fetch(`/classes?dataset=${currentDataset}`, {
                     method: 'GET'
                 });
                 
@@ -421,12 +522,12 @@
                 
                 const data = await response.json();
                 const classesList = data.available_classes.map(num => 
-                    `<span style="background: #007bff; color: white; padding: 4px 8px; border-radius: 4px; margin: 2px; display: inline-block;">Class ${num}</span>`
+                    `<span style="background: ${currentDataset === 'haskell' ? '#9c27b0' : '#007bff'}; color: white; padding: 4px 8px; border-radius: 4px; margin: 2px; display: inline-block;">Class ${num}</span>`
                 ).join('');
                 
                 result.innerHTML = `
                     <div class="result">
-                        <h3>📚 Available Classes</h3>
+                        <h3>📚 Available Classes (${data.dataset})</h3>
                         <p><strong>Total classes:</strong> ${data.total_classes}</p>
                         <p><strong>Range:</strong> Class ${data.min_class} to Class ${data.max_class}</p>
                         <div style="margin-top: 15px;">
@@ -452,7 +553,7 @@
             result.innerHTML = '';
             
             try {
-                const response = await fetch('/ingest', {
+                const response = await fetch(`/ingest?dataset=${currentDataset}`, {
                     method: 'POST'
                 });
                 
@@ -516,6 +617,9 @@
             }
         });
         
+        // Dataset toggle event listener
+        document.getElementById('datasetToggle').addEventListener('change', updateDataset);
+        
         // Modal functions
         async function openNotebookModal(filename, cellIndex, sourceContent) {
             const modal = document.getElementById('notebookModal');
@@ -527,7 +631,7 @@
             modal.style.display = 'block';
             
             try {
-                const response = await fetch(`/notebook/${filename}`);
+                const response = await fetch(`/notebook/${filename}?dataset=${currentDataset}`);
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }

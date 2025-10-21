@@ -1,0 +1,47 @@
+Eres un instructor de programación en Haskell. Tengo un ejemplo de código que cumple con un requerimiento, y quiero que lo adaptes basándote en los materiales del curso.
+
+El objetivo es crear otro programa EQUIVALENTE al original, pero siguiendo las recomendaciones de la teoría.
+
+Requerimiento Original: {{ requirement }}
+
+Teoría del Curso y Mejores Prácticas:
+{{ theory_context }}
+
+Ejemplo Actual:
+Descripción: {{ description }}
+Código: {{ code }}
+Enfoque: {{ approach }}
+
+Por favor arma un nuevo ejemplo:
+1. Siguiendo las mejores prácticas mencionadas en la teoría del curso
+2. Usando las funciones, tipos o enfoques recomendados de la teoría (prioriza hacerlo con funciones, tipos o enfoques del material provisto por más que cambie el código original)
+3. Respetando el requerimiento original ya que el material solo define el estilo y no la consigna
+4. Manteniendo inputs, outputs y comportamiento del programa original.
+5. Si el requerimiento no indica dar ejemplos de ejecucion o comentarios, no los agregues
+
+IMPORTANTE:
+- Usa la sintaxis correcta de Haskell
+- Asegúrate de que el código esté bien formateado y sea legible
+- El código debe ser correcto, pero no es necesario que sea eficiente
+- Debes asumir tus conocimientos son básicos (por ejemplo, no uses mónadas complejas ni librerías avanzadas).
+- El código debe ser funcional y puro (evita efectos secundarios cuando sea posible)
+- El código debe ser muy simple y corto.
+- Usa tipos explícitos cuando sea apropiado
+
+Ejemplo:
+Supongamos que el requerimiento es "Crear una función que valide si una lista está vacía" y hay un ejemplo de la teoria sobre como procesar listas y usar pattern matching.
+- Si hay una explicación teoríca relevante (no la consigna de un ejercicio), deberías tenerla en cuenta.
+- Deberías usar el ejemplo de la teoria para crear un nuevo ejemplo que valide si una lista está vacía (por ejemplo usando pattern matching si el material lo indica).
+- No deberías modificar el código para que trabaje con otros tipos de datos.
+- No deberías tener en cuenta funcionalidades adicionales no mencionadas en el requerimiento.
+
+Antes de dar tu respuesta quiero que pienses si el ejemplo que estas proponiendo es verdaderamente equivalente al original y lo corrijas si no lo es.
+Quiero que indiques por que son equivalentes dentro del apartado de approach.
+
+Proporciona tu respuesta usando formato XML:
+<example>
+<code>código haskell mejorado aquí</code>
+<approach>explicación de las mejoras y por que el código es equivalente al original</approach>
+<improvements>lista de mejoras</improvements>
+<theory_alignment>cómo se alinea con la teoría del curso</theory_alignment>
+</example>

@@ -1,0 +1,64 @@
+Eres un instructor de programación en Python experto en análisis de código. Tu tarea es revisar un ejemplo de código que fue mejorado basándose en material teórico y determinar si contiene elementos muy específicos del material que no son relevantes para el requerimiento original.
+
+Requerimiento Original: {{ requirement }}
+
+Material Teórico Utilizado:
+{{ theory_context }}
+
+COMPARACIÓN DE CÓDIGOS:
+
+Código Original (antes de mejoras con teoría):
+```python
+{{ original_code }}
+```
+
+Código Mejorado (después de aplicar teoría):
+```python
+{{ improved_code }}
+```
+
+Información del Ejemplo:
+Descripción: {{ description }}
+Enfoque Original: {{ approach }}
+Mejoras Aplicadas: {{ improvements }}
+Alineación con Teoría: {{ theory_alignment }}
+
+INSTRUCCIONES:
+1. Compara el código original con el código mejorado para identificar qué elementos se agregaron del material teórico
+2. Analiza si los elementos agregados son relevantes para cumplir el requerimiento original
+3. Identifica si se agregaron funcionalidades, validaciones o lógica que van más allá de lo que pide la consigna
+4. Si encuentras elementos irrelevantes o que eran parte de un ejercicio del material pero no del requerimiento, proporciona una versión filtrada del código
+5. Si el código mejorado está bien y solo contiene elementos relevantes, devuelve el código mejorado sin cambios
+
+CRITERIOS PARA FILTRAR:
+- Validaciones específicas del material que no están en el requerimiento
+- Funcionalidades adicionales que no se pidieron
+- Lógica compleja que no es necesaria para la consigna básica
+- Elementos de ejemplo del material que se incorporaron innecesariamente
+- Controles de flujo del material que si bien aportan valor, no están explicitos en el requerimiento
+
+CRITERIOS PARA MANTENER:
+- Estructura y estilo recomendado por la teoría
+- Funciones y métodos apropiados mencionados en el material
+- Mejores prácticas de programación
+- Código que cumple exactamente con el requerimiento
+
+IMPORTANTE:
+- En la mayoría de los casos NO deberías modificar el código mejorado
+- Solo filtra cuando hay elementos claramente irrelevantes agregados del material teórico
+- Mantén la funcionalidad del código original intacta
+- Preserva inputs, outputs y comportamiento del programa original
+- El objetivo es mantener solo las mejoras relevantes del material teórico
+
+Proporciona tu respuesta usando formato XML:
+<analysis>
+<has_irrelevant_elements>true/false</has_irrelevant_elements>
+<irrelevant_elements>descripción de elementos irrelevantes encontrados (si los hay)</irrelevant_elements>
+<filtering_justification>justificación de por qué se filtraron o no se filtraron elementos</filtering_justification>
+</analysis>
+
+<filtered_example>
+<code>código filtrado (o original si no hay cambios)</code>
+<approach>explicación actualizada del enfoque</approach>
+<filtering_summary>resumen de los cambios realizados (si los hubo)</filtering_summary>
+</filtered_example>

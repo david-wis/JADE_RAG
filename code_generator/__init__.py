@@ -20,6 +20,7 @@ from .code_generation import CodeGenerator
 from .theory_improvement import TheoryImprover
 from .filtering import TheoryFilter
 from .metrics import MetricsCalculator
+from .prompt_templates import Language
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +53,13 @@ class CodeExampleGenerator:
             raise
     
     @traceable(name="generate_examples")
-    async def generate_examples(self, requirement: str, num_examples: int = 3, ground_truth: Optional[str] = None, max_class_number: Optional[int] = None) -> Dict[str, Any]:
+    async def generate_examples(self, requirement: str, num_examples: int = 3, ground_truth: Optional[str] = None, max_class_number: Optional[int] = None, dataset: str = "python", language: Language = Language.PYTHON) -> Dict[str, Any]:
         """Main method to generate and improve code examples."""
         try:
-            logger.info(f"Generating {num_examples} examples for requirement: {requirement}")
+            logger.info(f"Generating {num_examples} examples for requirement: {requirement} using {dataset} dataset")
             
             # Step 1: Generate initial examples
-            initial_examples = await self.code_generator.generate_initial_examples(requirement, num_examples)
+            initial_examples = await self.code_generator.generate_initial_examples(requirement, num_examples, language)
             
             if not initial_examples:
                 return {
@@ -70,25 +71,25 @@ class CodeExampleGenerator:
             
             # Step 2: Get relevant theory from notebooks using both requirement and examples
             theory_sources = await self.theory_improver.get_relevant_theory(
-                self.rag_system, requirement, initial_examples, max_results=5, max_class_number=max_class_number
+                self.rag_system, requirement, initial_examples, max_results=5, max_class_number=max_class_number, dataset=dataset
             )
             
             # Step 3: Improve examples with theory
             if theory_sources:
                 improved_examples = await self.theory_improver.improve_examples_with_theory(
-                    initial_examples, requirement, theory_sources
+                    initial_examples, requirement, theory_sources, language
                 )
             else:
-                logger.warning("No theory sources found, using initial examples")
+                logger.warning(f"No theory sources found for {dataset} dataset, using initial examples")
                 improved_examples = initial_examples
                 for example in improved_examples:
-                    example["improvements"] = ["No theory sources available for improvement"]
-                    example["theory_alignment"] = "No course theory found for this requirement"
+                    example["improvements"] = [f"No theory sources available for improvement in {dataset} dataset"]
+                    example["theory_alignment"] = f"No course theory found for this requirement in {dataset} dataset"
             
             # Step 4: Filter theory-specific elements (if enabled)
             if self.enable_filtering and theory_sources:
                 filtered_examples = await self.theory_filter.filter_theory_specific_elements(
-                    improved_examples, requirement, theory_sources
+                    improved_examples, requirement, theory_sources, language
                 )
             else:
                 logger.info("Filtering disabled or no theory sources available")
@@ -104,7 +105,7 @@ class CodeExampleGenerator:
                 )
             
             # Step 6: Calculate answer relevancy scores for all examples
-            filtered_examples = await self.metrics_calculator.calculate_answer_relevancy(requirement, filtered_examples)
+            filtered_examples = await self.metrics_calculator.calculate_answer_relevancy(requirement, filtered_examples, language)
             
             return {
                 "requirement": requirement,
@@ -114,7 +115,9 @@ class CodeExampleGenerator:
                 "has_theory_improvement": len(theory_sources) > 0,
                 "has_theory_filtering": self.enable_filtering and len(theory_sources) > 0,
                 "has_context_precision": ground_truth is not None and len(theory_sources) > 0,
-                "has_answer_relevancy": True
+                "has_answer_relevancy": True,
+                "dataset": dataset,
+                "language": language.value
             }
             
         except Exception as e:
@@ -134,5 +137,6 @@ __all__ = [
     'TheoryImprover',
     'TheoryFilter',
     'MetricsCalculator',
-    'LLMFactory'
+    'LLMFactory',
+    'Language'
 ]
