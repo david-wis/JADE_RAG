@@ -513,34 +513,63 @@ class RAGSystem:
             logger.error(f"Error processing notebook {notebook_path}: {e}")
             return []
 
-    def rerank_documents(self, query: str, documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Rerank documents using CrossEncoder"""
+    @traceable(name="rerank_documents")
+    def rerank_documents(self, query: str, documents: List[Dict[str, Any]]):
+        """Rerank documents using CrossEncoder, returns before/after comparison for LangSmith trace"""
         if not self.reranker or not documents:
             logger.warning("Reranking disabled or no documents to rerank")
-            return documents
-        
+            return {
+                "before_rerank": [],
+                "after_rerank": [],
+                "reranked_docs": documents
+            }
+
         try:
+            # Save before reranking snapshot for trace
+            before_rerank = [
+                {
+                    "content": doc["content"],
+                    "confidence": doc.get("confidence"),
+                    "certainty": doc.get("certainty"),
+                    "distance": doc.get("distance"),
+                    "metadata": doc.get("metadata", {})
+                }
+                for doc in documents
+            ]
+
             # Prepare query-document pairs for CrossEncoder
-            pairs = []
-            for doc in documents:
-                pairs.append([query, doc["content"]])
-            
+            pairs = [[query, doc["content"]] for doc in documents]
             # Get reranking scores
             rerank_scores = self.reranker.predict(pairs)
-            
             # Add rerank scores to documents and sort
             for i, doc in enumerate(documents):
                 doc["rerank_score"] = float(rerank_scores[i])
-            
             # Sort by rerank score (higher is better)
             reranked_docs = sorted(documents, key=lambda x: x["rerank_score"], reverse=True)
-            
-            logger.info(f"Reranked {len(documents)} documents using CrossEncoder")
-            return reranked_docs
-            
+
+            # Save after reranking snapshot for trace
+            after_rerank = [
+                {
+                    "content": doc["content"],
+                    "rerank_score": doc.get("rerank_score"),
+                    "confidence": doc.get("confidence"),
+                    "certainty": doc.get("certainty"),
+                    "distance": doc.get("distance"),
+                    "metadata": doc.get("metadata", {})
+                }
+                for doc in reranked_docs
+            ]
+
+            return {
+                "before_rerank": before_rerank,
+                "after_rerank": after_rerank,
+            }
         except Exception as e:
             logger.error(f"Error during reranking: {e}")
-            return documents
+            return {
+                "before_rerank": before_rerank if 'before_rerank' in locals() else [],
+                "after_rerank": [],
+            }
 
     @traceable(name="ingest_notebooks")
     async def ingest_notebooks(self, dataset: str = "python") -> Dict[str, Any]:
@@ -732,8 +761,8 @@ class RAGSystem:
             # Apply reranking if enabled
             if self.enable_reranking and len(context_docs) > final_count:
                 logger.info(f"Reranking {len(context_docs)} documents to get top {final_count}")
-                context_docs = self.rerank_documents(query, context_docs)
-                context_docs = context_docs[:final_count]  # Take top N after reranking
+                rerank_result = self.rerank_documents(query, context_docs)
+                context_docs = rerank_result["reranked_docs"][:final_count]  # Take top N after reranking
             elif len(context_docs) > final_count:
                 context_docs = context_docs[:final_count]  # Take top N without reranking
 
@@ -818,8 +847,8 @@ class RAGSystem:
             # Apply reranking if enabled
             if self.enable_reranking and len(context_docs) > final_count:
                 logger.info(f"Reranking {len(context_docs)} documents to get top {final_count}")
-                context_docs = self.rerank_documents(question, context_docs)
-                context_docs = context_docs[:final_count]  # Take top N after reranking
+                rerank_result = self.rerank_documents(question, context_docs)
+                context_docs = rerank_result["reranked_docs"][:final_count]  # Take top N after reranking
             elif len(context_docs) > final_count:
                 context_docs = context_docs[:final_count]  # Take top N without reranking
 
