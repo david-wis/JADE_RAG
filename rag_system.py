@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama.llms import OllamaLLM
 from langchain_openai import ChatOpenAI
 import logging
+from preprocessing import preprocess_cell_content
 from config import (
     WEAVIATE_URL,
     OLLAMA_HOST,
@@ -453,15 +454,18 @@ class RAGSystem:
             for cell in notebook.cells:
                 cell_text = cell.source.strip()
                 if cell_text:
+                    # Preprocess the cell content to clean markdown links and HTML images
+                    preprocessed_text = preprocess_cell_content(cell_text)
+                    
                     # Add language-specific code block markers for code cells
                     if cell.cell_type == "code":
                         # Determine the language based on dataset
                         language = "python" if dataset == "python" else "haskell"
-                        formatted_cell = f"```{language}\n{cell_text}\n```"
+                        formatted_cell = f"```{language}\n{preprocessed_text}\n```"
                         combined_content.append(formatted_cell)
                     else:
-                        # For markdown cells, just add the text
-                        combined_content.append(cell_text)
+                        # For markdown cells, add the preprocessed text
+                        combined_content.append(preprocessed_text)
 
             if not combined_content:
                 return []
