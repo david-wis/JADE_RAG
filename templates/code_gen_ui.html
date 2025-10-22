@@ -585,8 +585,8 @@
                     const hasAnswerRelevancy = example.answer_relevancy_score !== undefined && example.answer_relevancy_score !== null && example.answer_relevancy_score !== '';
                     const hasGeneratedRubrics = example.generated_rubrics && example.generated_rubrics.length > 0;
                     
-                    const exampleTitle = example.description || 'Example ' + (index + 1);
                     const exampleId = index + 1; // Always use array index for consistent numbering
+                    const exampleTitle = 'Example ' + exampleId; // Always use consistent numbering
                     const originalCodeHtml = hasOriginalCode ? 
                         '<div class="original-code"><h5>Original Code:</h5><div class="code-block">' + escapeHtml(formatCode(example.original_code)) + '</div></div>' : '';
                     const improvementsHtml = hasImprovements ? 
@@ -649,7 +649,6 @@
                         '<div class="example">' +
                             '<div class="example-header">' +
                                 '<div class="example-title">' + exampleTitle + '</div>' +
-                                '<div class="example-id">Example ' + exampleId + '</div>' +
                             '</div>' +
                             originalCodeHtml +
                             '<div class="code-block">' + escapeHtml(formatCode(example.code)) + '</div>' +
