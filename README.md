@@ -2,31 +2,6 @@
 
 A Retrieval-Augmented Generation (RAG) system for JADE course materials using Weaviate, OpenAI/Ollama, and FastAPI.
 
-## Features
-
-- 📚 **Notebook Processing**: Automatically extracts content from Jupyter notebooks in the `Clases/` directory
-- 🔍 **Semantic Search**: Uses Weaviate for vector storage and retrieval
-- 🤖 **AI-Powered Q&A**: Integrates with OpenAI GPT models or local Ollama models
-- 🌐 **Web UI**: Simple and intuitive interface for asking questions
-- 🐍 **Local Python**: Runs locally with configurable AI providers
-
-## Architecture
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   FastAPI UI    │    │    Weaviate     │    │ OpenAI/Ollama   │
-│   (Port 8001)   │◄──►│   (Port 8080)   │    │                 │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-                    ┌─────────────────┐
-                    │  RAG System     │
-                    │  (Embeddings +  │
-                    │   Retrieval)    │
-                    └─────────────────┘
-```
-
 ## Quick Start
 
 ### Prerequisites
@@ -89,18 +64,10 @@ The system supports configurable text splitting strategies for processing Jupyte
 ```bash
 # Text Splitter Configuration
 TEXT_SPLITTER_STRATEGY=cell_based  # "cell_based" or "langchain"
-CHUNK_SIZE=1000
-CHUNK_OVERLAP=200
+CHUNK_SIZE=1500
+CHUNK_OVERLAP=250
 MIN_CHUNK_SIZE=100
 ```
-
-**Strategy Options:**
-- `cell_based`: Preserves each Jupyter cell as a single chunk (recommended for educational content)
-- `langchain`: Uses LangChain's RecursiveCharacterTextSplitter for more granular splitting
-
-**When to use each:**
-- **cell_based**: Best for educational notebooks where each cell represents a complete concept
-- **langchain**: Better for large cells or when you need more precise retrieval granularity
 
 ### 2. Quick Setup
 
@@ -122,7 +89,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Start Weaviate
-docker-compose up -d weaviate
+docker-compose up -d
 
 # If using Ollama, start Ollama (if not already running)
 # Skip this step if using OpenAI
@@ -228,75 +195,3 @@ python run_local.py
 
 1. Place new `.ipynb` files in the `Clases/` directory
 2. Call the ingest endpoint: `curl -X POST http://localhost:8001/ingest`
-
-## Troubleshooting
-
-### Common Issues
-
-1. **OpenAI API key issues**: Make sure your API key is valid and has sufficient credits
-   ```bash
-   # Test your API key
-   curl https://api.openai.com/v1/models \
-     -H "Authorization: Bearer $OPENAI_API_KEY"
-   ```
-
-2. **Ollama model not found**: Make sure Ollama is running locally and the model is pulled
-
-   ```bash
-   ollama serve
-   ollama pull gpt-oss:20b
-   ```
-
-3. **Weaviate connection issues**: Check if Weaviate is running
-
-   ```bash
-   docker-compose logs weaviate
-   curl http://localhost:8080/v1/meta
-   ```
-
-4. **GPU not detected**: Ensure NVIDIA Docker runtime is installed
-
-   ```bash
-   docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi
-   ```
-
-### Logs
-
-```bash
-# View all logs
-docker-compose logs
-
-# View specific service logs
-docker-compose logs weaviate
-```
-
-## File Structure
-
-```text
-JADE_RAG/
-├── Clases/                 # Jupyter notebooks directory
-├── data/                   # Persistent data storage
-├── venv/                   # Python virtual environment
-├── .env                   # Environment configuration
-├── .env.example           # Environment template
-├── docker-compose.yml      # Weaviate Docker configuration
-├── main.py                # FastAPI application
-├── rag_system.py          # Core RAG logic with Weaviate
-├── config.py              # Configuration settings
-├── run_local.py           # Local server runner
-├── setup_local.sh         # Local setup script
-├── requirements.txt       # Python dependencies
-└── README.md             # This file
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## License
-
-This project is part of the JADE educational system.
